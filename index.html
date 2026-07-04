@@ -902,7 +902,7 @@
   }
 
   // Detect when every completed scenario shares the same core numbers, so the
-  // (longest) 累積總額比較長條圖 can be drawn just once instead of repeated per plan.
+  // whole block (存摺卡＋損益兩平＋比較圖) can be drawn just once instead of per plan.
   function allScenariosIdentical(t){
     const done = t.scenarios
       .map(sc=>computeScenario(sc, t.birth))
@@ -912,30 +912,73 @@
     return done.every(c=> c.G===first.G && c.F===first.F && c.E3===first.E3 && c.breakevenMonths===first.breakevenMonths);
   }
 
+  // A single merged block that stands in for several identical plans. Title lists
+  // all the plan names together; body shows one passbook + one breakeven bar + (optionally) one chart.
+  function mergedScenarioBlockHtml(t, showChart){
+    const doneScenarios = t.scenarios.filter(sc=>{
+      const c = computeScenario(sc, t.birth);
+      return c.verdict!=='incomplete' && c.hasDiff;
+    });
+    const computed = computeScenario(doneScenarios[0], t.birth);
+    const planNames = doneScenarios.map(sc=>sc.planLabel).join('／');
+
+    const ageLine = computed.ageAtEff
+      ? `退休生效時約 ${computed.ageAtEff.years} 歲 ${computed.ageAtEff.months} 個月`
+      : `（填寫出生年月日後，可顯示退休時年齡）`;
+    const ageBeLine = computed.ageAtBreakeven
+      ? `約 ${computed.ageAtBreakeven.years} 歲 ${computed.ageAtBreakeven.months} 個月後，選擇優存開始比拋棄划算`
+      : ``;
+
+    return `
+      <div class="scenario-block">
+        <div class="scenario-title">${planNames}</div>
+        <div style="background:var(--jade-soft);border:1px solid var(--paper-line);border-radius:var(--radius);padding:9px 14px;color:var(--ink-soft);font-size:12px;margin-bottom:10px;">
+          上述 ${doneScenarios.length} 種退休方案，其拋棄優存的差額、每月優存息與損益兩平時間完全相同，故合併呈現一次。
+        </div>
+        <div class="passbook" style="position:relative;">
+          ${sealHtml(computed)}
+          <div class="pb-col giveup">
+            <div class="pb-label"><span class="dot"></span>拋棄優存 · 現在多領</div>
+            <div class="pb-amount"><span class="unit">NT$</span>${fmtMoney(computed.G)}</div>
+            <div class="pb-amount-tag">退休當下一次領取，之後不再每月加發利息</div>
+            <div class="pb-sub">一次領取總額 <b>NT$ ${fmtMoney(computed.B3)}</b></div>
+          </div>
+          <div class="pb-col keep">
+            <div class="pb-label"><span class="dot"></span>選擇優存 · 每月多領</div>
+            <div class="pb-amount"><span class="unit">NT$</span>${fmtMoney(computed.F)}<span style="font-size:15px;font-weight:600;color:var(--ink-soft);">/月</span></div>
+            <div class="pb-amount-tag">按月加發優存利息，直到請領完畢</div>
+            <div class="pb-sub">一次領取總額 <b>NT$ ${fmtMoney(computed.E3)}</b></div>
+          </div>
+        </div>
+        ${breakevenBarHtml(computed)}
+        ${showChart ? comparisonChartHtml(computed) : ''}
+        ${computed.hasDiff ? `<div class="pb-sub" style="padding:0 18px 4px;">${ageLine}${ageBeLine ? '，'+ageBeLine : ''}</div>` : ''}
+      </div>`;
+  }
+
   function teacherPageHtml(t, idx){
     const birthLine = t.birth && t.birth.y ? rocDate({year:t.birth.y+1911, month:t.birth.m, day:t.birth.d}) : '（未填寫，僅供金額比較）';
 
-    // 若使用者在STEP1把三個方案全部勾選，代表想看精簡版：完全不顯示累積總額比較長條圖
     const hideChart = !!t.hideCumulativeChart;
-    const merged = !hideChart && allScenariosIdentical(t);
+    const identical = allScenariosIdentical(t);
 
-    let mergedChartBlock = '';
-    if(merged){
-      const firstDone = t.scenarios
+    let bodyBlocks;
+    if(identical){
+      // 三種（或多種）方案結果完全相同 → 整個合併成一塊：一張存摺卡＋一個損益兩平＋（視情況）一張圖
+      // 若使用者三個全勾(hideChart)則連圖都省略；否則合併後仍保留一張圖
+      const incompleteBlocks = t.scenarios
         .map(sc=>computeScenario(sc, t.birth))
-        .find(c=> c.verdict!=='incomplete' && c.hasDiff);
-      mergedChartBlock = `
-        <div class="scenario-block">
-          <div class="scenario-title">累積總額比較（三種方案結果相同，合併呈現）</div>
-          <div style="background:var(--jade-soft);border:1px solid var(--paper-line);border-radius:var(--radius);padding:10px 16px;color:var(--ink-soft);font-size:12.5px;margin-bottom:10px;">
-            本案「一次退休金／兼領月退金／月退休金」三種方案，其拋棄優存的差額、每月優存息與損益兩平時間完全相同，故以下比較圖表適用於全部方案，僅呈現一次。
-          </div>
-          ${comparisonChartHtml(firstDone)}
-        </div>`;
+        .filter(c=> c.verdict==='incomplete')
+        .map(c=>{
+          const sc = t.scenarios.find(s=>s.planKey===c.planKey);
+          return scenarioBlockHtml(sc, t, true, false);
+        }).join('');
+      bodyBlocks = mergedScenarioBlockHtml(t, !hideChart) + incompleteBlocks;
+    } else {
+      // 方案不一致：各自呈現。三個全勾時各方案都不畫圖，否則各方案各畫一張
+      const showPerScenarioChart = !hideChart;
+      bodyBlocks = t.scenarios.map(sc=>scenarioBlockHtml(sc,t,true,showPerScenarioChart)).join('');
     }
-
-    // 各方案是否顯示自己的累積比較圖：合併時或隱藏時都不畫
-    const showPerScenarioChart = !merged && !hideChart;
 
     return `
       <div class="teacher-page" data-teacher-page="${t.id}">
@@ -947,8 +990,7 @@
           <div class="doc-id">出生年月日：${birthLine}<br>製表日期：${new Date().toLocaleDateString('zh-TW')}</div>
         </div>
         <div class="tp-note">說明：本表僅為退休試算系統數值之綜合呈現，資料正確與否取決於試算系統及輸入之正確性。最終決定拋棄優存與否請依個人規劃與客觀數據判斷，本表不負任何建議之責。</div>
-        ${t.scenarios.map(sc=>scenarioBlockHtml(sc,t,true,showPerScenarioChart)).join('')}
-        ${mergedChartBlock}
+        ${bodyBlocks}
         <div class="tp-footer"><span>教師版</span><span>第 ${idx+1} 份</span></div>
       </div>`;
   }
