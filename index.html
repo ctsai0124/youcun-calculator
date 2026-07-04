@@ -1,0 +1,796 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+<meta charset="UTF-8">
+<title>優存拋棄試算摺</title>
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Serif+TC:wght@500;600;700;900&family=Noto+Sans+TC:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --cover:#1F3A3D;
+    --cover-deep:#152A2C;
+    --paper:#FBF8EF;
+    --paper-line:#DCD3B5;
+    --ink:#2B2B26;
+    --ink-soft:#5B564A;
+    --gold:#A9822C;
+    --gold-soft:#D8BE86;
+    --seal:#A63A2E;
+    --seal-soft:#F1DAD6;
+    --jade:#3E6B5C;
+    --jade-soft:#E3ECE6;
+    --radius:2px;
+  }
+  *{box-sizing:border-box;}
+  html,body{margin:0;padding:0;}
+  body{
+    background:var(--cover-deep);
+    background-image:
+      radial-gradient(circle at 15% 10%, rgba(255,255,255,0.04), transparent 40%),
+      repeating-linear-gradient(135deg, rgba(255,255,255,0.015) 0px, rgba(255,255,255,0.015) 1px, transparent 1px, transparent 8px);
+    color:var(--ink);
+    font-family:'Noto Sans TC', sans-serif;
+    min-height:100vh;
+    padding:32px 16px 80px;
+  }
+  .wrap{max-width:1080px;margin:0 auto;}
+
+  /* ---------- Header ---------- */
+  .masthead{
+    display:flex;align-items:flex-end;justify-content:space-between;
+    padding:20px 8px 22px;border-bottom:1px solid rgba(216,190,134,0.35);
+    margin-bottom:28px;flex-wrap:wrap;gap:14px;
+  }
+  .masthead h1{
+    font-family:'Noto Serif TC',serif;font-weight:900;
+    font-size:clamp(26px,3.6vw,38px);color:var(--paper);margin:0;letter-spacing:.04em;
+  }
+  .masthead h1 span{color:var(--gold-soft);}
+  .masthead p{color:rgba(251,248,239,0.55);margin:6px 0 0;font-size:13px;letter-spacing:.05em;}
+  .badge-count{
+    font-family:'Space Mono',monospace;color:var(--gold-soft);
+    border:1px solid rgba(216,190,134,0.4);border-radius:999px;
+    padding:6px 16px;font-size:13px;white-space:nowrap;
+  }
+
+  /* ---------- Card (passbook) shell ---------- */
+  .card{
+    background:var(--paper);
+    border-radius:var(--radius);
+    box-shadow:0 18px 40px -18px rgba(0,0,0,0.55), 0 1px 0 rgba(255,255,255,0.4) inset;
+    margin-bottom:26px;
+    position:relative;
+    overflow:hidden;
+  }
+  .card::before{
+    content:"";position:absolute;left:0;top:0;bottom:0;width:10px;
+    background:linear-gradient(180deg,var(--jade),var(--cover));
+  }
+  .card-inner{padding:26px 30px 28px 36px;}
+  .card h2{
+    font-family:'Noto Serif TC',serif;font-size:19px;margin:0 0 4px;
+    color:var(--cover);display:flex;align-items:center;gap:10px;
+  }
+  .card h2 .step{
+    font-family:'Space Mono',monospace;font-size:12px;color:var(--paper);
+    background:var(--jade);padding:2px 8px;border-radius:2px;
+  }
+  .card .desc{color:var(--ink-soft);font-size:13.5px;margin:0 0 18px;line-height:1.7;}
+
+  /* ---------- Upload zone ---------- */
+  .dropzone{
+    border:1.5px dashed var(--gold);border-radius:var(--radius);
+    background:repeating-linear-gradient(-45deg, rgba(169,130,44,0.04) 0 10px, transparent 10px 20px);
+    padding:28px;text-align:center;cursor:pointer;transition:.15s;
+  }
+  .dropzone:hover, .dropzone.drag{background:var(--jade-soft);border-color:var(--jade);}
+  .dropzone input{display:none;}
+  .dz-icon{font-size:30px;margin-bottom:6px;display:block;}
+  .dropzone .main{font-weight:600;color:var(--cover);font-size:15px;}
+  .dropzone .sub{color:var(--ink-soft);font-size:12.5px;margin-top:4px;}
+
+  .chip-row{display:flex;flex-wrap:wrap;gap:8px;margin:16px 0 4px;}
+  .chip{
+    border:1px solid var(--paper-line);border-radius:999px;padding:7px 14px;
+    font-size:13px;cursor:pointer;user-select:none;color:var(--ink-soft);
+    background:#fff;transition:.12s;
+  }
+  .chip input{margin-right:6px;accent-color:var(--jade);}
+  .chip.active{border-color:var(--jade);color:var(--cover);background:var(--jade-soft);font-weight:600;}
+
+  .filelist{margin-top:16px;display:flex;flex-direction:column;gap:8px;}
+  .fileline{
+    display:flex;align-items:center;justify-content:space-between;gap:10px;
+    font-size:13px;padding:9px 12px;border:1px solid var(--paper-line);border-radius:2px;background:#fff;
+  }
+  .fileline .name{color:var(--ink);font-weight:500;}
+  .fileline .stat{font-family:'Space Mono',monospace;font-size:11.5px;padding:2px 8px;border-radius:999px;}
+  .stat.ok{background:var(--jade-soft);color:var(--jade);}
+  .stat.warn{background:var(--seal-soft);color:var(--seal);}
+  .stat.pending{background:#eee;color:#888;}
+
+  .btn{
+    font-family:'Noto Sans TC',sans-serif;font-weight:600;font-size:14px;
+    border:none;border-radius:2px;padding:11px 22px;cursor:pointer;transition:.15s;
+    display:inline-flex;align-items:center;gap:8px;
+  }
+  .btn-primary{background:var(--cover);color:var(--paper);}
+  .btn-primary:hover{background:var(--cover-deep);}
+  .btn-primary:disabled{background:#999;cursor:not-allowed;}
+  .btn-ghost{background:transparent;color:var(--cover);border:1px solid var(--paper-line);}
+  .btn-ghost:hover{border-color:var(--cover);}
+  .btn-seal{background:var(--seal);color:#fff;}
+  .btn-seal:hover{background:#8a2e24;}
+
+  /* ---------- Tabs ---------- */
+  .tabs{display:flex;gap:0;margin:0 0 0;border-bottom:1px solid rgba(216,190,134,0.35);}
+  .tab{
+    padding:12px 22px;font-family:'Noto Serif TC',serif;font-weight:600;font-size:15px;
+    color:rgba(251,248,239,0.55);cursor:pointer;border-bottom:2px solid transparent;
+  }
+  .tab.active{color:var(--paper);border-bottom-color:var(--gold-soft);}
+  .tab .n{font-family:'Space Mono',monospace;font-size:12px;margin-left:6px;color:var(--gold-soft);}
+
+  .view{display:none;padding-top:22px;}
+  .view.active{display:block;}
+
+  /* ---------- HR overview table ---------- */
+  .ledger{width:100%;border-collapse:collapse;font-size:13.5px;}
+  .ledger thead th{
+    text-align:left;font-weight:600;color:var(--paper);background:var(--cover);
+    padding:10px 12px;font-size:12.5px;letter-spacing:.03em;position:sticky;top:0;
+  }
+  .ledger tbody tr{border-bottom:1px solid var(--paper-line);}
+  .ledger tbody tr:hover{background:var(--jade-soft);}
+  .ledger td{padding:11px 12px;vertical-align:middle;}
+  .ledger td.num{font-family:'Space Mono',monospace;text-align:right;}
+  .tag{
+    display:inline-block;font-size:11px;padding:2px 9px;border-radius:999px;font-weight:600;
+  }
+  .tag.once{background:#E3ECE6;color:var(--jade);}
+  .tag.partial{background:#F0E6D2;color:var(--gold);}
+  .tag.monthly{background:#E4E7F1;color:#48507D;}
+  .verdict{font-weight:700;}
+  .verdict.giveup{color:var(--seal);}
+  .verdict.keep{color:var(--jade);}
+  .verdict.none{color:#999;font-weight:400;}
+  .bdate-input{
+    display:flex;gap:4px;align-items:center;
+  }
+  .bdate-input input{
+    width:48px;font-family:'Space Mono',monospace;font-size:12.5px;
+    border:1px solid var(--paper-line);border-radius:2px;padding:4px 5px;text-align:center;
+  }
+  .bdate-input span{font-size:11px;color:var(--ink-soft);}
+  .del-btn{
+    border:none;background:none;color:var(--seal);cursor:pointer;font-size:16px;opacity:.6;
+  }
+  .del-btn:hover{opacity:1;}
+  .empty-state{
+    text-align:center;padding:60px 20px;color:rgba(251,248,239,0.5);
+  }
+  .empty-state .glyph{font-size:34px;display:block;margin-bottom:10px;}
+
+  /* ---------- Teacher print pages ---------- */
+  .print-toolbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px;}
+  .print-toolbar .hint{color:rgba(251,248,239,0.55);font-size:13px;}
+
+  .teacher-page{
+    background:var(--paper);border-radius:var(--radius);
+    box-shadow:0 18px 40px -18px rgba(0,0,0,0.55);
+    padding:40px 44px 34px;margin-bottom:30px;
+    page-break-after:always;position:relative;
+  }
+  .tp-head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid var(--cover);padding-bottom:14px;margin-bottom:22px;}
+  .tp-head h3{font-family:'Noto Serif TC',serif;font-size:23px;color:var(--cover);margin:0 0 4px;}
+  .tp-head .unit{color:var(--ink-soft);font-size:13px;}
+  .tp-head .doc-id{font-family:'Space Mono',monospace;font-size:11px;color:var(--ink-soft);text-align:right;}
+  .tp-note{
+    background:var(--jade-soft);border-left:3px solid var(--jade);padding:10px 14px;
+    font-size:12.5px;color:var(--ink-soft);margin-bottom:20px;line-height:1.7;border-radius:0 2px 2px 0;
+  }
+
+  .scenario-block{margin-bottom:26px;}
+  .scenario-title{
+    font-family:'Noto Serif TC',serif;font-size:15.5px;color:var(--cover);
+    display:flex;align-items:center;gap:10px;margin-bottom:10px;
+  }
+  .scenario-title::after{content:"";flex:1;height:1px;background:var(--paper-line);}
+
+  .passbook{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--paper-line);border-radius:2px;overflow:hidden;}
+  .pb-col{padding:16px 18px;position:relative;}
+  .pb-col.giveup{background:#FBF3F1;border-right:1px dashed var(--paper-line);}
+  .pb-col.keep{background:#F0F6F2;}
+  .pb-label{font-size:12px;color:var(--ink-soft);letter-spacing:.04em;margin-bottom:4px;}
+  .pb-amount{font-family:'Space Mono',monospace;font-size:22px;font-weight:700;color:var(--ink);}
+  .pb-sub{font-size:12px;color:var(--ink-soft);margin-top:6px;line-height:1.6;}
+
+  .breakeven-bar{margin-top:14px;padding:0 18px 16px;}
+  .bb-track{height:8px;border-radius:4px;background:var(--paper-line);position:relative;overflow:visible;}
+  .bb-fill{height:8px;border-radius:4px;background:linear-gradient(90deg,var(--jade),var(--gold));}
+  .bb-marker{position:absolute;top:-4px;width:2px;height:16px;background:var(--cover);}
+  .bb-caption{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-soft);margin-top:6px;}
+
+  .seal-stamp{
+    position:absolute;right:26px;top:26px;width:84px;height:84px;
+    border:3px solid var(--seal);border-radius:50%;color:var(--seal);
+    display:flex;align-items:center;justify-content:center;text-align:center;
+    font-family:'Noto Serif TC',serif;font-weight:700;font-size:13px;line-height:1.3;
+    transform:rotate(-8deg);opacity:.88;letter-spacing:.06em;
+  }
+
+  .hr-detail-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-top:12px;}
+  .hr-detail-grid .item{background:#fff;border:1px solid var(--paper-line);border-radius:2px;padding:9px 11px;}
+  .hr-detail-grid .item .k{font-size:11px;color:var(--ink-soft);}
+  .hr-detail-grid .item .v{font-family:'Space Mono',monospace;font-size:14px;color:var(--ink);margin-top:2px;}
+
+  .tp-footer{margin-top:26px;padding-top:14px;border-top:1px solid var(--paper-line);font-size:11px;color:var(--ink-soft);display:flex;justify-content:space-between;}
+
+  .doc-toggle{display:flex;gap:8px;margin-bottom:18px;}
+
+  @media print{
+    body{background:#fff !important;padding:0;}
+    .masthead,.tabs,.print-toolbar,.card,.doc-toggle{display:none !important;}
+    .view{display:none !important;padding:0;}
+    .view.print-active{display:block !important;}
+    .teacher-page{box-shadow:none;margin:0;border-radius:0;}
+    .hr-print-page{box-shadow:none;margin:0;border-radius:0;}
+  }
+  .hidden{display:none;}
+
+  @media (max-width:720px){
+    .card-inner{padding:20px 18px 22px 22px;}
+    .passbook{grid-template-columns:1fr;}
+    .pb-col.giveup{border-right:none;border-bottom:1px dashed var(--paper-line);}
+    .hr-detail-grid{grid-template-columns:1fr 1fr;}
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <div class="masthead">
+    <div>
+      <h1>優存拋棄試算<span>摺</span></h1>
+      <p>上傳「教育人員退休金試算系統」匯出檔 · 自動判斷拋棄優存與否</p>
+    </div>
+    <div class="badge-count" id="teacherCount">尚未匯入任何資料</div>
+  </div>
+
+  <div class="card">
+    <div class="card-inner">
+      <h2><span class="step">STEP 1</span>選擇要抓取的退休方案（可不選＝全部抓取）</h2>
+      <p class="desc">試算系統匯出的檔案裡，每個活頁分別對應一種退休方式。若老師還沒決定要用哪種方式退休，可以不勾選，系統會自動抓取檔案裡所有找得到的方案。</p>
+      <div class="chip-row" id="planChips">
+        <label class="chip" data-plan="once"><input type="checkbox">一次退休金</label>
+        <label class="chip" data-plan="partial"><input type="checkbox">兼領月退金(展期)</label>
+        <label class="chip" data-plan="monthly"><input type="checkbox">月退休金(展期)</label>
+      </div>
+
+      <h2 style="margin-top:22px;"><span class="step">STEP 2</span>上傳試算表檔案（可一次選取多位老師的檔案）</h2>
+      <p class="desc">支援 .xls 與 .xlsx，檔名不影響判讀，系統會直接讀取分頁內容裡的欄位標籤來抓取數值。</p>
+      <label class="dropzone" id="dropzone">
+        <input type="file" id="fileInput" multiple accept=".xls,.xlsx">
+        <span class="dz-icon">📂</span>
+        <span class="main">點擊選擇檔案，或將檔案拖曳到這裡</span>
+        <span class="sub">可一次選取多個檔案，代表多位老師</span>
+      </label>
+      <div class="filelist" id="fileList"></div>
+      <div style="margin-top:18px;">
+        <button class="btn btn-primary" id="processBtn" disabled>解析並加入試算清單</button>
+        <span id="processHint" style="margin-left:12px;color:var(--ink-soft);font-size:13px;"></span>
+      </div>
+    </div>
+  </div>
+
+  <div class="tabs">
+    <div class="tab active" data-tab="hr">人事總覽<span class="n" id="hrTabCount">0</span></div>
+    <div class="tab" data-tab="print">教師列印版<span class="n" id="printTabCount">0</span></div>
+  </div>
+
+  <div class="view active" id="view-hr">
+    <div class="print-toolbar">
+      <span class="hint">出生年月日為選填，填寫後可算出「幾歲後選優存才划算」</span>
+      <button class="btn btn-ghost" id="printHrBtn">🖨 列印人事總表</button>
+    </div>
+    <div class="card" id="hrCard">
+      <div class="card-inner" style="padding-left:30px;">
+        <div style="overflow-x:auto;">
+          <table class="ledger" id="hrTable">
+            <thead>
+              <tr>
+                <th>老師</th><th>方案</th><th>出生年月日(民國，選填)</th>
+                <th style="text-align:right;">選擇優存金額</th><th style="text-align:right;">差額</th>
+                <th style="text-align:right;">每月優存息</th><th style="text-align:right;">損益兩平</th>
+                <th>建議</th><th></th>
+              </tr>
+            </thead>
+            <tbody id="hrTbody"></tbody>
+          </table>
+        </div>
+        <div class="empty-state" id="hrEmpty">
+          <span class="glyph">🗂️</span>尚未匯入任何老師的試算資料，請先在上方上傳檔案
+        </div>
+      </div>
+    </div>
+    <!-- Hidden printable HR summary, built at print time -->
+    <div id="hrPrintArea" style="display:none;"></div>
+  </div>
+
+  <div class="view" id="view-print">
+    <div class="print-toolbar">
+      <span class="hint">每位老師獨立一頁，適合個別列印交給老師參考</span>
+      <div style="display:flex;gap:8px;">
+        <select class="btn btn-ghost" id="teacherPicker" style="cursor:pointer;"></select>
+        <button class="btn btn-seal" id="printOneBtn">🖨 列印目前這位</button>
+        <button class="btn btn-ghost" id="printAllBtn">🖨 列印全部教師版</button>
+      </div>
+    </div>
+    <div id="teacherPages"></div>
+    <div class="empty-state" id="printEmpty" style="color:var(--ink-soft);">
+      <span class="glyph">🧾</span>尚未有任何老師資料可供列印
+    </div>
+  </div>
+
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+(function(){
+  "use strict";
+
+  /* ---------------- state ---------------- */
+  let pendingFiles = [];           // {file, status}
+  let teachers = [];                // {id, name, unit, birth:{y,m,d}|null, scenarios:[...]}
+  let scenarioIdSeq = 0;
+
+  const PLAN_DEFS = [
+    {key:'once', label:'一次退休金', match:n=> n.includes('一次退休金') && !n.includes('兼領')},
+    {key:'partial', label:'兼領月退金(展期)', match:n=> n.includes('兼領')},
+    {key:'monthly', label:'月退休金(展期)', match:n=> n.includes('月退休金') && !n.includes('兼領')}
+  ];
+
+  /* ---------------- helpers: excel label search ---------------- */
+  function norm(s){ return String(s).replace(/[\s\r\n]+/g,''); }
+
+  function firstMatch(rows, predicates){
+    for(const pred of predicates){
+      for(const row of rows){
+        for(let c=0;c<row.length;c++){
+          const cell = row[c];
+          if(typeof cell === 'string' && pred(norm(cell))){
+            for(let c2=c+1;c2<row.length;c2++){
+              const v = row[c2];
+              if(v!==undefined && v!==null && v!==''){ return v; }
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function toNumber(v){
+    if(typeof v==='number') return v;
+    if(typeof v==='string'){ const n=parseFloat(v.replace(/,/g,'')); return isNaN(n)?0:n; }
+    return 0;
+  }
+
+  function extractEffectiveDate(rows){
+    for(const row of rows){
+      for(const cell of row){
+        if(typeof cell==='string' && (cell.includes('退休生效日')||cell.includes('試算-'))){
+          const m = cell.match(/(\d{2,3})年(\d{1,2})月(\d{1,2})日/);
+          if(m){ return {year:+m[1]+1911, month:+m[2], day:+m[3], roc:+m[1]}; }
+        }
+      }
+    }
+    return null;
+  }
+
+  function classifySheet(sheetName){
+    const n = norm(sheetName);
+    if(n.includes('總表') || n.includes('年資及均薪')) return null;
+    for(const p of PLAN_DEFS){ if(p.match(n)) return p; }
+    return null;
+  }
+
+  // Primary extraction: read the "保障18%優惠存款利率部分" breakdown table
+  // (headers "得優惠存款金額" / "每月利息"). This table format stays consistent
+  // across 一次退休金 / 兼領一次退休金部分, and is absent when there is genuinely
+  // no 18% principal to compare (e.g. 月退休金(展期)).
+  function findAmountAndInterestFromTable(rows){
+    for(let r=0;r<rows.length;r++){
+      const row = rows[r];
+      for(let c=0;c<row.length;c++){
+        if(typeof row[c]==='string' && norm(row[c])==='得優惠存款金額'){
+          let interestCol = null;
+          for(let c2=c+1;c2<row.length;c2++){
+            if(row[c2]!==undefined && row[c2]!==null && row[c2]!==''){ interestCol=c2; break; }
+          }
+          for(let r2=r+1;r2<rows.length && r2<=r+3;r2++){
+            const dataRow = rows[r2];
+            if(dataRow && dataRow[c]!==undefined && dataRow[c]!==null && dataRow[c]!==''){
+              return { amt: toNumber(dataRow[c]), interest: interestCol!==null ? toNumber(dataRow[interestCol]) : 0 };
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
+  function extractScenarioFromSheet(rows, planDef){
+    const name = firstMatch(rows, [n=>n==='姓名']);
+    const unit = firstMatch(rows, [n=>n==='服務單位']);
+    const E3 = toNumber(firstMatch(rows, [
+      n=>n==='公保養老給付金額',
+      n=>n.includes('公保養老給付金額') && !n.includes('得辦理') && !n.includes('不得辦理')
+    ]));
+
+    let G, F;
+    const table = findAmountAndInterestFromTable(rows);
+    if(table){
+      G = table.amt; F = table.interest;
+    } else {
+      // fallback: lettered fields in the basic-info breakdown section
+      G = toNumber(firstMatch(rows, [
+        n=> n.includes('舊制') && n.includes('退休金') && n.includes('G') && !n.includes('每月')
+      ]));
+      F = toNumber(firstMatch(rows, [
+        n=> n.includes('舊制年資') && n.includes('優存利息') && n.includes('F')
+      ]));
+    }
+
+    const effDate = extractEffectiveDate(rows);
+    return {
+      id: 's'+(scenarioIdSeq++),
+      planKey: planDef.key, planLabel: planDef.label,
+      name: name || '(未取得姓名)', unit: unit || '',
+      E3, G, F, effDate
+    };
+  }
+
+  /* ---------------- computation (mirrors original spreadsheet formulas) ---------------- */
+  function computeScenario(s, birth){
+    const B3 = s.E3 - s.G;
+    let breakevenMonths = 0;
+    if(s.F > 0 && s.G > 0){ breakevenMonths = Math.ceil(s.G / s.F); }
+    const beYears = Math.floor(breakevenMonths/12);
+    const beMonths = breakevenMonths%12;
+
+    let ageAtEff=null, ageAtBreakeven=null;
+    if(birth && s.effDate){
+      const birthDate = new Date(birth.y, birth.m-1, birth.d);
+      const effDate = new Date(s.effDate.year, s.effDate.month-1, s.effDate.day);
+      const ageYears = Math.floor((effDate-birthDate)/(365.25*86400000));
+      let totalMonths = (effDate.getFullYear()-birthDate.getFullYear())*12 + (effDate.getMonth()-birthDate.getMonth());
+      if(effDate.getDate() < birthDate.getDate()) totalMonths--;
+      const remMonths = ((totalMonths%12)+12)%12;
+      ageAtEff = {years:ageYears, months:remMonths};
+      const totalAtBE = (ageYears + Math.floor(breakevenMonths/12))*12 + remMonths + (breakevenMonths%12);
+      ageAtBreakeven = {years:Math.floor(totalAtBE/12), months:((totalAtBE%12)+12)%12};
+    }
+
+    let verdict = 'none'; // 'giveup' | 'keep' | 'none'
+    if(s.G > 0 && s.F > 0){
+      verdict = breakevenMonths > 12*30 ? 'giveup' : (breakevenMonths <= 0 ? 'keep' : 'compare');
+    }
+
+    return Object.assign({}, s, {B3, breakevenMonths, beYears, beMonths, ageAtEff, ageAtBreakeven, hasDiff: s.G>0 && s.F>0, verdict});
+  }
+
+  function fmtMoney(n){ return Number(n||0).toLocaleString('zh-TW'); }
+  function rocDate(d){ return d ? `民國${d.year-1911}年${d.month}月${d.day}日` : '（未取得）'; }
+
+  /* ---------------- file handling ---------------- */
+  const fileInput = document.getElementById('fileInput');
+  const dropzone = document.getElementById('dropzone');
+  const fileListEl = document.getElementById('fileList');
+  const processBtn = document.getElementById('processBtn');
+  const processHint = document.getElementById('processHint');
+
+  function renderFileList(){
+    fileListEl.innerHTML = pendingFiles.map((f,i)=>`
+      <div class="fileline">
+        <span class="name">${f.file.name}</span>
+        <span class="stat ${f.status==='ok'?'ok':f.status==='warn'?'warn':'pending'}">${f.statusText||'待解析'}</span>
+      </div>`).join('');
+    processBtn.disabled = pendingFiles.length===0;
+  }
+
+  function addFiles(fileArr){
+    for(const f of fileArr){ pendingFiles.push({file:f, status:'pending', statusText:'待解析'}); }
+    renderFileList();
+  }
+
+  fileInput.addEventListener('change', e=> addFiles(Array.from(e.target.files||[])) );
+  dropzone.addEventListener('dragover', e=>{ e.preventDefault(); dropzone.classList.add('drag'); });
+  dropzone.addEventListener('dragleave', ()=> dropzone.classList.remove('drag'));
+  dropzone.addEventListener('drop', e=>{
+    e.preventDefault(); dropzone.classList.remove('drag');
+    addFiles(Array.from(e.dataTransfer.files||[]));
+  });
+
+  document.querySelectorAll('#planChips .chip').forEach(chip=>{
+    chip.addEventListener('click', e=>{
+      // allow the label's native checkbox toggle, then sync visual state next tick
+      setTimeout(()=>{
+        const cb = chip.querySelector('input');
+        chip.classList.toggle('active', cb.checked);
+      },0);
+    });
+  });
+
+  function selectedPlanKeys(){
+    const active = Array.from(document.querySelectorAll('#planChips .chip.active')).map(c=>c.dataset.plan);
+    return active.length ? active : PLAN_DEFS.map(p=>p.key);
+  }
+
+  processBtn.addEventListener('click', async ()=>{
+    processBtn.disabled = true;
+    processHint.textContent = '解析中…';
+    const wantedKeys = selectedPlanKeys();
+
+    for(const item of pendingFiles){
+      try{
+        const buf = await item.file.arrayBuffer();
+        const wb = XLSX.read(buf, {type:'array', cellDates:false});
+        const foundScenarios = [];
+        let teacherName=null, teacherUnit=null;
+
+        wb.SheetNames.forEach(sheetName=>{
+          const planDef = classifySheet(sheetName);
+          if(!planDef) return;
+          if(!wantedKeys.includes(planDef.key)) return;
+          const ws = wb.Sheets[sheetName];
+          const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null, raw:true});
+          const scenario = extractScenarioFromSheet(rows, planDef);
+          if(scenario.name && scenario.name !== '(未取得姓名)'){ teacherName = scenario.name; }
+          if(scenario.unit){ teacherUnit = scenario.unit; }
+          foundScenarios.push(scenario);
+        });
+
+        if(foundScenarios.length===0){
+          item.status='warn'; item.statusText='找不到符合的分頁';
+        } else {
+          item.status='ok'; item.statusText=`已擷取 ${foundScenarios.length} 個方案`;
+          let teacher = teachers.find(t=> t.name === (teacherName||'(未取得姓名)') && t.sourceFile !== item.file.name ? false : t.name === (teacherName||'(未取得姓名)'));
+          teacher = teachers.find(t=> t.name === (teacherName||'(未取得姓名)'));
+          if(!teacher){
+            teacher = {id:'t'+teachers.length+'_'+Date.now(), name: teacherName||'(未取得姓名)', unit: teacherUnit||'', birth:null, scenarios:[]};
+            teachers.push(teacher);
+          }
+          foundScenarios.forEach(sc=> teacher.scenarios.push(sc));
+        }
+      }catch(err){
+        console.error(err);
+        item.status='warn'; item.statusText='解析失敗：' + (err && err.message ? err.message : '未知錯誤');
+      }
+    }
+
+    renderFileList();
+    pendingFiles = [];
+    processHint.textContent = '完成！已更新下方清單';
+    processBtn.disabled = true;
+    renderAll();
+    setTimeout(()=>{ processHint.textContent=''; }, 3500);
+  });
+
+  /* ---------------- tabs ---------------- */
+  document.querySelectorAll('.tab').forEach(tab=>{
+    tab.addEventListener('click', ()=>{
+      document.querySelectorAll('.tab').forEach(t=>t.classList.remove('active'));
+      document.querySelectorAll('.view').forEach(v=>v.classList.remove('active'));
+      tab.classList.add('active');
+      document.getElementById('view-'+tab.dataset.tab).classList.add('active');
+    });
+  });
+
+  /* ---------------- rendering: HR overview ---------------- */
+  const hrTbody = document.getElementById('hrTbody');
+  const hrEmpty = document.getElementById('hrEmpty');
+  const teacherCountBadge = document.getElementById('teacherCount');
+  const hrTabCount = document.getElementById('hrTabCount');
+  const printTabCount = document.getElementById('printTabCount');
+
+  function planTagClass(key){ return key==='once'?'once':key==='partial'?'partial':'monthly'; }
+
+  function verdictLabel(sc){
+    if(!sc.hasDiff) return {cls:'none', text:'差額為0，無拋棄優存疑慮'};
+    if(sc.breakevenMonths<=0) return {cls:'keep', text:'建議選擇優存'};
+    return {cls:'compare', text:`約 ${sc.beYears}年${sc.beMonths}月後優存才划算`};
+  }
+
+  function renderHR(){
+    let rowCount = 0;
+    hrTbody.innerHTML = '';
+    teachers.forEach(t=>{
+      t.scenarios.forEach(sc=>{
+        rowCount++;
+        const computed = computeScenario(sc, t.birth);
+        const v = verdictLabel(computed);
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${t.name}</td>
+          <td><span class="tag ${planTagClass(sc.planKey)}">${sc.planLabel}</span></td>
+          <td>
+            <div class="bdate-input">
+              <input type="number" min="1" max="140" placeholder="年" data-tid="${t.id}" data-part="y" value="${t.birth?t.birth.y:''}">
+              <span>年</span>
+              <input type="number" min="1" max="12" placeholder="月" data-tid="${t.id}" data-part="m" value="${t.birth?t.birth.m:''}">
+              <span>月</span>
+              <input type="number" min="1" max="31" placeholder="日" data-tid="${t.id}" data-part="d" value="${t.birth?t.birth.d:''}">
+              <span>日</span>
+            </div>
+          </td>
+          <td class="num">${fmtMoney(sc.E3)}</td>
+          <td class="num">${fmtMoney(sc.G)}</td>
+          <td class="num">${fmtMoney(sc.F)}</td>
+          <td class="num">${computed.hasDiff ? (computed.breakevenMonths+' 月') : '—'}</td>
+          <td class="verdict ${v.cls==='compare'?'':(v.cls)}">${v.text}</td>
+          <td><button class="del-btn" data-del-scenario="${sc.id}" data-tid="${t.id}" title="刪除此筆">✕</button></td>
+        `;
+        hrTbody.appendChild(tr);
+      });
+    });
+
+    hrEmpty.style.display = rowCount===0 ? 'block' : 'none';
+    document.getElementById('hrTable').style.display = rowCount===0 ? 'none' : 'table';
+    teacherCountBadge.textContent = teachers.length ? `已匯入 ${teachers.length} 位老師 · ${rowCount} 筆方案` : '尚未匯入任何資料';
+    hrTabCount.textContent = rowCount;
+    printTabCount.textContent = teachers.length;
+
+    hrTbody.querySelectorAll('input[data-tid]').forEach(inp=>{
+      inp.addEventListener('input', ()=>{
+        const teacher = teachers.find(t=>t.id===inp.dataset.tid);
+        if(!teacher) return;
+        if(!teacher.birth) teacher.birth = {y:null,m:null,d:null};
+        teacher.birth[inp.dataset.part] = inp.value ? parseInt(inp.value,10) : null;
+        if(!teacher.birth.y && !teacher.birth.m && !teacher.birth.d) teacher.birth = null;
+        renderPrintViews();
+      });
+    });
+    hrTbody.querySelectorAll('button[data-del-scenario]').forEach(btn=>{
+      btn.addEventListener('click', ()=>{
+        const teacher = teachers.find(t=>t.id===btn.dataset.tid);
+        if(!teacher) return;
+        teacher.scenarios = teacher.scenarios.filter(s=>s.id!==btn.dataset.delScenario);
+        if(teacher.scenarios.length===0) teachers = teachers.filter(t=>t.id!==teacher.id);
+        renderAll();
+      });
+    });
+  }
+
+  /* ---------------- rendering: teacher print pages ---------------- */
+  const teacherPagesEl = document.getElementById('teacherPages');
+  const printEmpty = document.getElementById('printEmpty');
+  const teacherPicker = document.getElementById('teacherPicker');
+
+  function breakevenBarHtml(sc){
+    if(!sc.hasDiff){
+      return `<div class="breakeven-bar"><div class="bb-caption"><span>差額為 0</span><span>無需比較</span></div></div>`;
+    }
+    const capMonths = Math.max(sc.breakevenMonths*1.3, 24);
+    const pct = Math.min(100, (sc.breakevenMonths/capMonths)*100);
+    return `
+      <div class="breakeven-bar">
+        <div class="bb-track">
+          <div class="bb-fill" style="width:${pct}%"></div>
+          <div class="bb-marker" style="left:${pct}%"></div>
+        </div>
+        <div class="bb-caption">
+          <span>退休當下</span>
+          <span>損益兩平：約 ${sc.beYears}年${sc.beMonths}月（${sc.breakevenMonths}個月）</span>
+        </div>
+      </div>`;
+  }
+
+  function sealHtml(sc){
+    if(!sc.hasDiff) return '';
+    if(sc.breakevenMonths<=0) return `<div class="seal-stamp">建議<br>選擇優存</div>`;
+    return `<div class="seal-stamp">試算<br>參考用</div>`;
+  }
+
+  function scenarioBlockHtml(sc, t, forTeacher){
+    const computed = computeScenario(sc, t.birth);
+    const ageLine = computed.ageAtEff
+      ? `退休生效時約 ${computed.ageAtEff.years} 歲 ${computed.ageAtEff.months} 個月`
+      : `（填寫出生年月日後，可顯示退休時年齡）`;
+    const ageBeLine = computed.ageAtBreakeven
+      ? `約 ${computed.ageAtBreakeven.years} 歲 ${computed.ageAtBreakeven.months} 個月後，選擇優存開始比拋棄划算`
+      : ``;
+
+    const hrExtra = forTeacher ? '' : `
+      <div class="hr-detail-grid">
+        <div class="item"><div class="k">選擇優存金額 (E3)</div><div class="v">${fmtMoney(sc.E3)}</div></div>
+        <div class="item"><div class="k">差額 (G)</div><div class="v">${fmtMoney(sc.G)}</div></div>
+        <div class="item"><div class="k">每月優存息 (F)</div><div class="v">${fmtMoney(sc.F)}</div></div>
+      </div>`;
+
+    return `
+      <div class="scenario-block">
+        <div class="scenario-title">${sc.planLabel}</div>
+        <div class="passbook" style="position:relative;">
+          ${sealHtml(computed)}
+          <div class="pb-col giveup">
+            <div class="pb-label">拋棄優存 · 一次領取</div>
+            <div class="pb-amount">NT$ ${fmtMoney(computed.B3)}</div>
+            <div class="pb-sub">退休當下一次領取，不再每月加發優存利息</div>
+          </div>
+          <div class="pb-col keep">
+            <div class="pb-label">選擇優存 · 一次領取＋每月加發</div>
+            <div class="pb-amount">NT$ ${fmtMoney(sc.E3)}</div>
+            <div class="pb-sub">另每月加發優存利息 NT$ ${fmtMoney(sc.F)}</div>
+          </div>
+        </div>
+        ${breakevenBarHtml(computed)}
+        ${computed.hasDiff ? `<div class="pb-sub" style="padding:0 18px 4px;">${ageLine}${ageBeLine ? '，'+ageBeLine : ''}</div>` : ''}
+        ${hrExtra}
+      </div>`;
+  }
+
+  function teacherPageHtml(t, idx){
+    const birthLine = t.birth && t.birth.y ? rocDate({year:t.birth.y+1911, month:t.birth.m, day:t.birth.d}) : '（未填寫，僅供金額比較）';
+    return `
+      <div class="teacher-page" data-teacher-page="${t.id}">
+        <div class="tp-head">
+          <div>
+            <h3>${t.name} 老師 · 拋棄優存與否試算結果</h3>
+            <div class="unit">${t.unit || ''}</div>
+          </div>
+          <div class="doc-id">出生年月日：${birthLine}<br>製表日期：${new Date().toLocaleDateString('zh-TW')}</div>
+        </div>
+        <div class="tp-note">說明：本表僅為退休試算系統數值之綜合呈現，資料正確與否取決於試算系統及輸入之正確性。最終決定拋棄優存與否請依個人規劃與客觀數據判斷，本表不負任何建議之責。</div>
+        ${t.scenarios.map(sc=>scenarioBlockHtml(sc,t,true)).join('')}
+        <div class="tp-footer"><span>教師版</span><span>第 ${idx+1} 份</span></div>
+      </div>`;
+  }
+
+  function renderPrintViews(){
+    teacherPagesEl.innerHTML = teachers.map((t,i)=> teacherPageHtml(t,i)).join('');
+    printEmpty.style.display = teachers.length ? 'none' : 'block';
+
+    const prevSelected = teacherPicker.value;
+    teacherPicker.innerHTML = teachers.map(t=>`<option value="${t.id}">${t.name}</option>`).join('');
+    if(teachers.some(t=>t.id===prevSelected)) teacherPicker.value = prevSelected;
+  }
+
+  function renderAll(){ renderHR(); renderPrintViews(); }
+
+  /* ---------------- print actions ---------------- */
+  document.getElementById('printHrBtn').addEventListener('click', ()=>{
+    document.getElementById('view-hr').classList.add('print-active');
+    document.getElementById('view-print').classList.remove('print-active');
+    window.print();
+    setTimeout(()=> document.getElementById('view-hr').classList.remove('print-active'), 300);
+  });
+
+  document.getElementById('printAllBtn').addEventListener('click', ()=>{
+    document.getElementById('view-print').classList.add('print-active');
+    document.getElementById('view-hr').classList.remove('print-active');
+    document.querySelectorAll('.teacher-page').forEach(p=> p.style.display='block');
+    window.print();
+    setTimeout(()=> document.getElementById('view-print').classList.remove('print-active'), 300);
+  });
+
+  document.getElementById('printOneBtn').addEventListener('click', ()=>{
+    const tid = teacherPicker.value;
+    document.getElementById('view-print').classList.add('print-active');
+    document.getElementById('view-hr').classList.remove('print-active');
+    document.querySelectorAll('.teacher-page').forEach(p=>{
+      p.style.display = (p.dataset.teacherPage===tid) ? 'block' : 'none';
+    });
+    window.print();
+    setTimeout(()=>{
+      document.getElementById('view-print').classList.remove('print-active');
+      document.querySelectorAll('.teacher-page').forEach(p=> p.style.display='block');
+    }, 300);
+  });
+
+  renderAll();
+})();
+</script>
+</body>
+</html>
