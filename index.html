@@ -321,17 +321,39 @@
         <label class="chip" data-plan="monthly"><input type="checkbox">月退休金(展期)</label>
       </div>
 
-      <h2 style="margin-top:22px;"><span class="step">STEP 2</span>上傳試算表檔案（可一次選取多位老師的檔案）</h2>
-      <p class="desc">請先至 ECPA「公教人員退休撫卹試算系統」下載／列印出該老師的「教職人員退休金試算表」（.xls 或 .xlsx），再將檔案上傳到這裡。檔名不影響判讀，系統會直接讀取分頁內容裡的欄位標籤來抓取數值。</p>
-      <label class="dropzone" id="dropzone">
-        <input type="file" id="fileInput" multiple accept=".xls,.xlsx">
-        <span class="dz-icon">📂</span>
-        <span class="main">點擊選擇檔案，或將檔案拖曳到這裡</span>
-        <span class="sub">可一次選取多個檔案，代表多位老師</span>
-      </label>
-      <div class="filelist" id="fileList"></div>
+      <h2 style="margin-top:22px;"><span class="step">STEP 2</span>分別上傳「不拋棄優存」與「拋棄優存」兩個版本的試算表</h2>
+      <p class="desc">
+        這個工具是用「兩份試算結果的差異」來算出划不划算，所以每位老師需要<b>兩個版本</b>的試算表：
+        ① 不勾選任何拋棄優存選項、直接試算出的「基準版」；
+        ② 在試算系統裡把「拋棄優存」的公保養老給付／一次退休金選項勾起來，重新試算出的「拋棄版」。
+        兩份都上傳後，系統會自動用姓名配對、算出差異；只上傳其中一份也可以先加入清單，等另一份補齊後就會自動完成比較。
+        不熟悉怎麼在試算系統裡操作出這兩份檔案，可以參考
+        <a href="trial-calc-steps.pdf" target="_blank" rel="noopener" style="color:var(--jade);font-weight:600;">《試算系統操作步驟》PDF說明</a>。
+      </p>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;">
+        <div>
+          <div style="font-weight:700;color:var(--cover);font-size:13.5px;margin-bottom:8px;">① 不拋棄優存（基準版）</div>
+          <label class="dropzone" id="dropzoneBaseline">
+            <input type="file" id="fileInputBaseline" multiple accept=".xls,.xlsx">
+            <span class="dz-icon">📁</span>
+            <span class="main">點擊或拖曳上傳基準版檔案</span>
+            <span class="sub">未勾選任何拋棄優存選項的試算結果</span>
+          </label>
+          <div class="filelist" id="fileListBaseline"></div>
+        </div>
+        <div>
+          <div style="font-weight:700;color:var(--seal);font-size:13.5px;margin-bottom:8px;">② 拋棄優存版</div>
+          <label class="dropzone" id="dropzoneGiveup">
+            <input type="file" id="fileInputGiveup" multiple accept=".xls,.xlsx">
+            <span class="dz-icon">📁</span>
+            <span class="main">點擊或拖曳上傳拋棄版檔案</span>
+            <span class="sub">已勾選公保養老給付／一次退休金拋棄優存</span>
+          </label>
+          <div class="filelist" id="fileListGiveup"></div>
+        </div>
+      </div>
       <div style="margin-top:18px;">
-        <button class="btn btn-primary" id="processBtn" disabled>解析並加入試算清單</button>
+        <button class="btn btn-primary" id="processBtn" disabled>解析並比對兩版本，加入試算清單</button>
         <span id="processHint" style="margin-left:12px;color:var(--ink-soft);font-size:13px;"></span>
       </div>
     </div>
@@ -394,7 +416,8 @@
   "use strict";
 
   /* ---------------- state ---------------- */
-  let pendingFiles = [];           // {file, status}
+  let pendingFilesBaseline = [];   // {file, status, statusText}
+  let pendingFilesGiveup = [];
   let teachers = [];                // {id, name, unit, birth:{y,m,d}|null, scenarios:[...]}
   let scenarioIdSeq = 0;
 
@@ -449,74 +472,69 @@
     return null;
   }
 
-  // Primary extraction: read the "保障18%優惠存款利率部分" breakdown table
-  // (headers "得優惠存款金額" / "每月利息"). This table format stays consistent
-  // across 一次退休金 / 兼領一次退休金部分, and is absent when there is genuinely
-  // no 18% principal to compare (e.g. 月退休金(展期)).
-  function findAmountAndInterestFromTable(rows){
-    for(let r=0;r<rows.length;r++){
-      const row = rows[r];
-      for(let c=0;c<row.length;c++){
-        if(typeof row[c]==='string' && norm(row[c])==='得優惠存款金額'){
-          let interestCol = null;
-          for(let c2=c+1;c2<row.length;c2++){
-            if(row[c2]!==undefined && row[c2]!==null && row[c2]!==''){ interestCol=c2; break; }
-          }
-          for(let r2=r+1;r2<rows.length && r2<=r+3;r2++){
-            const dataRow = rows[r2];
-            if(dataRow && dataRow[c]!==undefined && dataRow[c]!==null && dataRow[c]!==''){
-              return { amt: toNumber(dataRow[c]), interest: interestCol!==null ? toNumber(dataRow[interestCol]) : 0 };
-            }
-          }
-        }
-      }
-    }
-    return null;
-  }
-
-  function extractScenarioFromSheet(rows, planDef){
+  // Raw field extraction per sheet. These four fields are all the tool needs:
+  //  J = 可自由運用之公保養老給付/倘選擇拋棄優存之公保養老給付金額 （公保養老給付「立即可拿」的部分）
+  //  E = 每月公保養老給付優存利息（公保部分若選擇優存，每月加發多少）
+  //  G = 一次性退休金(舊制) 本金（若這筆本金仍在優存中，則不算入立即可拿的金額）
+  //  F = 每月舊制年資一次退休金優存利息（G本金若優存，每月加發多少）
+  // 拋棄優存與否的差異，是透過比較「基準版」與「拋棄版」這兩份檔案裡的這些欄位計算出來的，
+  // 而不是單一檔案裡直接讀到的數字（因為官方試算系統勾選拋棄後，會重新核算整筆金額，
+  // 不是單純的金額相減）。
+  function extractRawFromSheet(rows){
     const name = firstMatch(rows, [n=>n==='姓名']);
     const unit = firstMatch(rows, [n=>n==='服務單位']);
-    const E3 = toNumber(firstMatch(rows, [
-      n=>n==='公保養老給付金額',
-      n=>n.includes('公保養老給付金額') && !n.includes('得辦理') && !n.includes('不得辦理')
-    ]));
-
-    let G, F;
-    const table = findAmountAndInterestFromTable(rows);
-    if(table){
-      G = table.amt; F = table.interest;
-    } else {
-      // fallback: lettered fields in the basic-info breakdown section
-      G = toNumber(firstMatch(rows, [
-        n=> n.includes('舊制') && n.includes('退休金') && n.includes('G') && !n.includes('每月')
-      ]));
-      F = toNumber(firstMatch(rows, [
-        n=> n.includes('舊制年資') && n.includes('優存利息') && n.includes('F')
-      ]));
-    }
-
-    const effDate = extractEffectiveDate(rows);
-    return {
-      id: 's'+(scenarioIdSeq++),
-      planKey: planDef.key, planLabel: planDef.label,
-      name: name || '(未取得姓名)', unit: unit || '',
-      E3, G, F, effDate
-    };
+    const J = toNumber(firstMatch(rows, [n=> n.includes('可自由運用之公保養老給付')]));
+    const E = toNumber(firstMatch(rows, [n=> n.includes('每月公保養老給付') && n.includes('優存利息')]));
+    const F = toNumber(firstMatch(rows, [n=> n.includes('舊制年資') && n.includes('優存利息') && n.includes('F')]));
+    const G = toNumber(firstMatch(rows, [n=> n.includes('舊制') && n.includes('退休金') && n.includes('G') && !n.includes('每月')]));
+    return { name, unit, J, E, F, G };
   }
 
-  /* ---------------- computation (mirrors original spreadsheet formulas) ---------------- */
-  function computeScenario(s, birth){
-    const B3 = s.E3 - s.G;
+  function findOrCreateTeacher(name, unit){
+    let teacher = teachers.find(t=> t.name === (name || '(未取得姓名)'));
+    if(!teacher){
+      teacher = {id:'t'+teachers.length+'_'+Date.now()+'_'+Math.random().toString(36).slice(2,6),
+                 name: name || '(未取得姓名)', unit: unit || '', birth:null, scenarios:[]};
+      teachers.push(teacher);
+    }
+    if(unit && !teacher.unit) teacher.unit = unit;
+    return teacher;
+  }
+
+  function upsertScenario(teacher, planDef, group, raw, effDate){
+    let sc = teacher.scenarios.find(s=>s.planKey===planDef.key);
+    if(!sc){
+      sc = {id:'s'+(scenarioIdSeq++), planKey:planDef.key, planLabel:planDef.label, effDate:effDate||null, baseline:null, giveup:null};
+      teacher.scenarios.push(sc);
+    }
+    sc[group] = raw;
+    if(effDate && !sc.effDate) sc.effDate = effDate;
+  }
+
+  /* ---------------- computation: diff between baseline (不拋棄) and giveup (拋棄) files ---------------- */
+  function computeScenario(sc, birth){
+    const hasBoth = !!sc.baseline && !!sc.giveup;
+    let E3=0, G=0, F=0, B3=0;
+    if(hasBoth){
+      const lumpKeep   = sc.baseline.J + (sc.baseline.F===0 ? sc.baseline.G : 0);
+      const lumpGiveup = sc.giveup.J   + (sc.giveup.F===0   ? sc.giveup.G   : 0);
+      const monthlyKeep   = sc.baseline.E + sc.baseline.F;
+      const monthlyGiveup = sc.giveup.E   + sc.giveup.F;
+      E3 = lumpKeep;
+      G  = lumpGiveup - lumpKeep;       // 差額：拋棄後現在能多領多少
+      F  = monthlyKeep - monthlyGiveup; // 每月優存息：選擇優存每月比拋棄多領多少
+      B3 = lumpGiveup;
+    }
+
     let breakevenMonths = 0;
-    if(s.F > 0 && s.G > 0){ breakevenMonths = Math.ceil(s.G / s.F); }
+    if(hasBoth && F > 0 && G > 0){ breakevenMonths = Math.ceil(G / F); }
     const beYears = Math.floor(breakevenMonths/12);
     const beMonths = breakevenMonths%12;
 
     let ageAtEff=null, ageAtBreakeven=null;
-    if(birth && s.effDate){
+    if(birth && sc.effDate){
       const birthDate = new Date(birth.y, birth.m-1, birth.d);
-      const effDate = new Date(s.effDate.year, s.effDate.month-1, s.effDate.day);
+      const effDate = new Date(sc.effDate.year, sc.effDate.month-1, sc.effDate.day);
       const ageYears = Math.floor((effDate-birthDate)/(365.25*86400000));
       let totalMonths = (effDate.getFullYear()-birthDate.getFullYear())*12 + (effDate.getMonth()-birthDate.getMonth());
       if(effDate.getDate() < birthDate.getDate()) totalMonths--;
@@ -526,44 +544,62 @@
       ageAtBreakeven = {years:Math.floor(totalAtBE/12), months:((totalAtBE%12)+12)%12};
     }
 
-    let verdict = 'none'; // 'giveup' | 'keep' | 'none'
-    if(s.G > 0 && s.F > 0){
-      verdict = breakevenMonths > 12*30 ? 'giveup' : (breakevenMonths <= 0 ? 'keep' : 'compare');
-    }
+    let verdict = 'none'; // 'incomplete' | 'giveup' | 'keep' | 'none' | 'compare'
+    if(!hasBoth){ verdict = 'incomplete'; }
+    else if(G <= 0){ verdict = 'none'; }
+    else if(F <= 0){ verdict = 'giveup'; } // 拋棄沒有任何每月損失，等於白拿
+    else { verdict = breakevenMonths > 12*30 ? 'giveup' : 'compare'; }
 
-    return Object.assign({}, s, {B3, breakevenMonths, beYears, beMonths, ageAtEff, ageAtBreakeven, hasDiff: s.G>0 && s.F>0, verdict});
+    return Object.assign({}, sc, {
+      E3, G, F, B3, breakevenMonths, beYears, beMonths, ageAtEff, ageAtBreakeven,
+      hasBoth, hasDiff: hasBoth && G>0 && F>0, verdict
+    });
   }
 
   function fmtMoney(n){ return Number(n||0).toLocaleString('zh-TW'); }
   function rocDate(d){ return d ? `民國${d.year-1911}年${d.month}月${d.day}日` : '（未取得）'; }
 
-  /* ---------------- file handling ---------------- */
-  const fileInput = document.getElementById('fileInput');
-  const dropzone = document.getElementById('dropzone');
-  const fileListEl = document.getElementById('fileList');
+  /* ---------------- file handling (two groups: baseline / giveup) ---------------- */
+  const fileInputBaseline = document.getElementById('fileInputBaseline');
+  const dropzoneBaseline = document.getElementById('dropzoneBaseline');
+  const fileListBaselineEl = document.getElementById('fileListBaseline');
+  const fileInputGiveup = document.getElementById('fileInputGiveup');
+  const dropzoneGiveup = document.getElementById('dropzoneGiveup');
+  const fileListGiveupEl = document.getElementById('fileListGiveup');
   const processBtn = document.getElementById('processBtn');
   const processHint = document.getElementById('processHint');
 
-  function renderFileList(){
-    fileListEl.innerHTML = pendingFiles.map((f,i)=>`
+  function renderFileList(group){
+    const list = group==='baseline' ? pendingFilesBaseline : pendingFilesGiveup;
+    const el = group==='baseline' ? fileListBaselineEl : fileListGiveupEl;
+    el.innerHTML = list.map(f=>`
       <div class="fileline">
         <span class="name">${f.file.name}</span>
         <span class="stat ${f.status==='ok'?'ok':f.status==='warn'?'warn':'pending'}">${f.statusText||'待解析'}</span>
       </div>`).join('');
-    processBtn.disabled = pendingFiles.length===0;
+    processBtn.disabled = (pendingFilesBaseline.length===0 && pendingFilesGiveup.length===0);
   }
 
-  function addFiles(fileArr){
-    for(const f of fileArr){ pendingFiles.push({file:f, status:'pending', statusText:'待解析'}); }
-    renderFileList();
+  function addFiles(group, fileArr){
+    const list = group==='baseline' ? pendingFilesBaseline : pendingFilesGiveup;
+    for(const f of fileArr){ list.push({file:f, status:'pending', statusText:'待解析'}); }
+    renderFileList(group);
   }
 
-  fileInput.addEventListener('change', e=> addFiles(Array.from(e.target.files||[])) );
-  dropzone.addEventListener('dragover', e=>{ e.preventDefault(); dropzone.classList.add('drag'); });
-  dropzone.addEventListener('dragleave', ()=> dropzone.classList.remove('drag'));
-  dropzone.addEventListener('drop', e=>{
-    e.preventDefault(); dropzone.classList.remove('drag');
-    addFiles(Array.from(e.dataTransfer.files||[]));
+  fileInputBaseline.addEventListener('change', e=> addFiles('baseline', Array.from(e.target.files||[])) );
+  dropzoneBaseline.addEventListener('dragover', e=>{ e.preventDefault(); dropzoneBaseline.classList.add('drag'); });
+  dropzoneBaseline.addEventListener('dragleave', ()=> dropzoneBaseline.classList.remove('drag'));
+  dropzoneBaseline.addEventListener('drop', e=>{
+    e.preventDefault(); dropzoneBaseline.classList.remove('drag');
+    addFiles('baseline', Array.from(e.dataTransfer.files||[]));
+  });
+
+  fileInputGiveup.addEventListener('change', e=> addFiles('giveup', Array.from(e.target.files||[])) );
+  dropzoneGiveup.addEventListener('dragover', e=>{ e.preventDefault(); dropzoneGiveup.classList.add('drag'); });
+  dropzoneGiveup.addEventListener('dragleave', ()=> dropzoneGiveup.classList.remove('drag'));
+  dropzoneGiveup.addEventListener('drop', e=>{
+    e.preventDefault(); dropzoneGiveup.classList.remove('drag');
+    addFiles('giveup', Array.from(e.dataTransfer.files||[]));
   });
 
   document.querySelectorAll('#planChips .chip').forEach(chip=>{
@@ -581,17 +617,13 @@
     return active.length ? active : PLAN_DEFS.map(p=>p.key);
   }
 
-  processBtn.addEventListener('click', async ()=>{
-    processBtn.disabled = true;
-    processHint.textContent = '解析中…';
-    const wantedKeys = selectedPlanKeys();
-
-    for(const item of pendingFiles){
+  async function processGroup(group, wantedKeys){
+    const list = group==='baseline' ? pendingFilesBaseline : pendingFilesGiveup;
+    for(const item of list){
       try{
         const buf = await item.file.arrayBuffer();
         const wb = XLSX.read(buf, {type:'array', cellDates:false});
-        const foundScenarios = [];
-        let teacherName=null, teacherUnit=null;
+        let matchedCount = 0;
 
         wb.SheetNames.forEach(sheetName=>{
           const planDef = classifySheet(sheetName);
@@ -599,32 +631,37 @@
           if(!wantedKeys.includes(planDef.key)) return;
           const ws = wb.Sheets[sheetName];
           const rows = XLSX.utils.sheet_to_json(ws, {header:1, defval:null, raw:true});
-          const scenario = extractScenarioFromSheet(rows, planDef);
-          if(scenario.name && scenario.name !== '(未取得姓名)'){ teacherName = scenario.name; }
-          if(scenario.unit){ teacherUnit = scenario.unit; }
-          foundScenarios.push(scenario);
+          const raw = extractRawFromSheet(rows);
+          const effDate = extractEffectiveDate(rows);
+          const teacher = findOrCreateTeacher(raw.name, raw.unit);
+          upsertScenario(teacher, planDef, group, raw, effDate);
+          matchedCount++;
         });
 
-        if(foundScenarios.length===0){
+        if(matchedCount===0){
           item.status='warn'; item.statusText='找不到符合的分頁';
         } else {
-          item.status='ok'; item.statusText=`已擷取 ${foundScenarios.length} 個方案`;
-          let teacher = teachers.find(t=> t.name === (teacherName||'(未取得姓名)') && t.sourceFile !== item.file.name ? false : t.name === (teacherName||'(未取得姓名)'));
-          teacher = teachers.find(t=> t.name === (teacherName||'(未取得姓名)'));
-          if(!teacher){
-            teacher = {id:'t'+teachers.length+'_'+Date.now(), name: teacherName||'(未取得姓名)', unit: teacherUnit||'', birth:null, scenarios:[]};
-            teachers.push(teacher);
-          }
-          foundScenarios.forEach(sc=> teacher.scenarios.push(sc));
+          item.status='ok'; item.statusText=`已擷取 ${matchedCount} 個方案`;
         }
       }catch(err){
         console.error(err);
         item.status='warn'; item.statusText='解析失敗：' + (err && err.message ? err.message : '未知錯誤');
       }
     }
+  }
 
-    renderFileList();
-    pendingFiles = [];
+  processBtn.addEventListener('click', async ()=>{
+    processBtn.disabled = true;
+    processHint.textContent = '解析中…';
+    const wantedKeys = selectedPlanKeys();
+
+    await processGroup('baseline', wantedKeys);
+    await processGroup('giveup', wantedKeys);
+
+    renderFileList('baseline');
+    renderFileList('giveup');
+    pendingFilesBaseline = [];
+    pendingFilesGiveup = [];
     processHint.textContent = '完成！已更新下方清單';
     processBtn.disabled = true;
     renderAll();
@@ -651,7 +688,12 @@
   function planTagClass(key){ return key==='once'?'once':key==='partial'?'partial':'monthly'; }
 
   function verdictLabel(sc){
-    if(!sc.hasDiff) return {cls:'none', text:'差額為0，無拋棄優存疑慮'};
+    if(sc.verdict==='incomplete'){
+      const missing = !sc.baseline ? '基準版' : '拋棄版';
+      return {cls:'none', text:`尚缺「${missing}」試算表，無法比較`};
+    }
+    if(!sc.hasDiff && sc.verdict!=='giveup') return {cls:'none', text:'差額為0，無拋棄優存疑慮'};
+    if(sc.verdict==='giveup' && sc.F<=0 && sc.G>0) return {cls:'keep', text:'拋棄優存沒有任何每月損失，建議拋棄'};
     if(sc.breakevenMonths<=0) return {cls:'keep', text:'建議選擇優存'};
     return {cls:'compare', text:`約 ${sc.beYears}年${sc.beMonths}月後優存才划算`};
   }
@@ -678,9 +720,9 @@
               <span>日</span>
             </div>
           </td>
-          <td class="num">${fmtMoney(sc.E3)}</td>
-          <td class="num">${fmtMoney(sc.G)}</td>
-          <td class="num">${fmtMoney(sc.F)}</td>
+          <td class="num">${computed.hasBoth ? fmtMoney(computed.E3) : '—'}</td>
+          <td class="num">${computed.hasBoth ? fmtMoney(computed.G) : '—'}</td>
+          <td class="num">${computed.hasBoth ? fmtMoney(computed.F) : '—'}</td>
           <td class="num">${computed.hasDiff ? (computed.breakevenMonths+' 月') : '—'}</td>
           <td class="verdict ${v.cls==='compare'?'':(v.cls)}">${v.text}</td>
           <td><button class="del-btn" data-del-scenario="${sc.id}" data-tid="${t.id}" title="刪除此筆">✕</button></td>
@@ -723,6 +765,9 @@
 
   function breakevenBarHtml(sc){
     if(!sc.hasDiff){
+      if(sc.verdict==='giveup' && sc.G>0 && sc.F<=0){
+        return `<div class="breakeven-bar"><div class="bb-caption"><span class="now">拋棄優存沒有任何每月損失</span><span class="headline" style="font-size:16px;color:var(--seal);">建議直接拋棄優存</span></div></div>`;
+      }
       return `<div class="breakeven-bar"><div class="bb-caption"><span class="now">差額為 0</span><span class="headline" style="font-size:16px;">無拋棄優存疑慮</span></div></div>`;
     }
     const capMonths = Math.max(sc.breakevenMonths*1.3, 24);
@@ -741,17 +786,19 @@
       </div>`;
   }
 
-  function sealHtml(sc){
-    if(!sc.hasDiff) return '';
-    if(sc.breakevenMonths<=0) return `<div class="seal-stamp">建議<br>選擇優存</div>`;
+  function sealHtml(computed){
+    if(computed.verdict==='incomplete') return '';
+    if(!computed.hasDiff && computed.verdict!=='giveup') return '';
+    if(computed.verdict==='giveup') return `<div class="seal-stamp">建議<br>拋棄優存</div>`;
+    if(computed.breakevenMonths<=0) return `<div class="seal-stamp">建議<br>選擇優存</div>`;
     return `<div class="seal-stamp">試算<br>參考用</div>`;
   }
 
-  function comparisonChartHtml(sc, computed){
+  function comparisonChartHtml(computed){
     if(!computed.hasDiff) return '';
     const checkpoints = [1,3,5,10,20];
     const values = checkpoints.map(y=>({
-      y, giveup: computed.B3, keep: sc.E3 + sc.F*12*y
+      y, giveup: computed.B3, keep: computed.E3 + computed.F*12*y
     }));
     const maxVal = Math.max(...values.map(v=>Math.max(v.giveup,v.keep)), 1);
     const rows = values.map(v=>{
@@ -786,6 +833,18 @@
 
   function scenarioBlockHtml(sc, t, forTeacher){
     const computed = computeScenario(sc, t.birth);
+
+    if(computed.verdict==='incomplete'){
+      const missing = !sc.baseline ? '① 不拋棄優存（基準版）' : '② 拋棄優存版';
+      return `
+        <div class="scenario-block">
+          <div class="scenario-title">${sc.planLabel}</div>
+          <div style="background:var(--seal-soft);border:1px solid var(--paper-line);border-radius:var(--radius);padding:14px 18px;color:var(--ink-soft);font-size:13px;">
+            尚缺「${missing}」的試算表，補齊後這個方案就能自動算出差異。
+          </div>
+        </div>`;
+    }
+
     const ageLine = computed.ageAtEff
       ? `退休生效時約 ${computed.ageAtEff.years} 歲 ${computed.ageAtEff.months} 個月`
       : `（填寫出生年月日後，可顯示退休時年齡）`;
@@ -795,9 +854,9 @@
 
     const hrExtra = forTeacher ? '' : `
       <div class="hr-detail-grid">
-        <div class="item"><div class="k">選擇優存金額 (E3)</div><div class="v">${fmtMoney(sc.E3)}</div></div>
-        <div class="item"><div class="k">差額 (G)</div><div class="v">${fmtMoney(sc.G)}</div></div>
-        <div class="item"><div class="k">每月優存息 (F)</div><div class="v">${fmtMoney(sc.F)}</div></div>
+        <div class="item"><div class="k">選擇優存一次領取總額</div><div class="v">${fmtMoney(computed.E3)}</div></div>
+        <div class="item"><div class="k">差額（拋棄後多領）</div><div class="v">${fmtMoney(computed.G)}</div></div>
+        <div class="item"><div class="k">每月優存息</div><div class="v">${fmtMoney(computed.F)}</div></div>
       </div>`;
 
     return `
@@ -807,19 +866,19 @@
           ${sealHtml(computed)}
           <div class="pb-col giveup">
             <div class="pb-label"><span class="dot"></span>拋棄優存 · 現在多領</div>
-            <div class="pb-amount"><span class="unit">NT$</span>${fmtMoney(sc.G)}</div>
+            <div class="pb-amount"><span class="unit">NT$</span>${fmtMoney(computed.G)}</div>
             <div class="pb-amount-tag">退休當下一次領取，之後不再每月加發利息</div>
             <div class="pb-sub">一次領取總額 <b>NT$ ${fmtMoney(computed.B3)}</b></div>
           </div>
           <div class="pb-col keep">
             <div class="pb-label"><span class="dot"></span>選擇優存 · 每月多領</div>
-            <div class="pb-amount"><span class="unit">NT$</span>${fmtMoney(sc.F)}<span style="font-size:15px;font-weight:600;color:var(--ink-soft);">/月</span></div>
+            <div class="pb-amount"><span class="unit">NT$</span>${fmtMoney(computed.F)}<span style="font-size:15px;font-weight:600;color:var(--ink-soft);">/月</span></div>
             <div class="pb-amount-tag">按月加發優存利息，直到請領完畢</div>
-            <div class="pb-sub">一次領取總額 <b>NT$ ${fmtMoney(sc.E3)}</b></div>
+            <div class="pb-sub">一次領取總額 <b>NT$ ${fmtMoney(computed.E3)}</b></div>
           </div>
         </div>
         ${breakevenBarHtml(computed)}
-        ${comparisonChartHtml(sc, computed)}
+        ${comparisonChartHtml(computed)}
         ${computed.hasDiff ? `<div class="pb-sub" style="padding:0 18px 4px;">${ageLine}${ageBeLine ? '，'+ageBeLine : ''}</div>` : ''}
         ${hrExtra}
       </div>`;
