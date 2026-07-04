@@ -314,7 +314,7 @@
   <div class="card">
     <div class="card-inner">
       <h2><span class="step">STEP 1</span>選擇要抓取的退休方案（可不選＝全部抓取）</h2>
-      <p class="desc">試算系統匯出的檔案裡，每個活頁分別對應一種退休方式。若老師還沒決定要用哪種方式退休，可以不勾選，系統會自動抓取檔案裡所有找得到的方案。</p>
+      <p class="desc">試算系統匯出的檔案裡，每個活頁分別對應一種退休方式。<b>若不勾選任何項目，系統預設只抓取「月退休金(展期)」一個方案</b>（最常見的請領方式），版面最精簡；若三個方案全部勾選，系統會顯示三個方案的存摺卡與損益兩平，但為節省版面，會自動省略最占空間的「累積總額比較長條圖」。</p>
       <div class="chip-row" id="planChips">
         <label class="chip" data-plan="once"><input type="checkbox">一次退休金</label>
         <label class="chip" data-plan="partial"><input type="checkbox">兼領月退金(展期)</label>
@@ -614,7 +614,14 @@
 
   function selectedPlanKeys(){
     const active = Array.from(document.querySelectorAll('#planChips .chip.active')).map(c=>c.dataset.plan);
-    return active.length ? active : PLAN_DEFS.map(p=>p.key);
+    // 都沒勾選時，預設只抓「月退休金(展期)」一個方案，避免每位老師都跑三個方案佔版面
+    return active.length ? active : ['monthly'];
+  }
+
+  // 使用者是否「三個方案全部勾選」——用來決定要不要隱藏最佔空間的累積總額比較長條圖
+  function allThreePlansSelected(){
+    const active = Array.from(document.querySelectorAll('#planChips .chip.active')).map(c=>c.dataset.plan);
+    return active.length === PLAN_DEFS.length;
   }
 
   async function processGroup(group, wantedKeys){
@@ -654,9 +661,13 @@
     processBtn.disabled = true;
     processHint.textContent = '解析中…';
     const wantedKeys = selectedPlanKeys();
+    const hideChart = allThreePlansSelected();
 
     await processGroup('baseline', wantedKeys);
     await processGroup('giveup', wantedKeys);
+
+    // 把「三個全勾＝隱藏累積比較圖」的偏好記在這批被觸及的老師身上
+    teachers.forEach(t=>{ if(t.hideCumulativeChart===undefined) t.hideCumulativeChart = hideChart; else if(hideChart) t.hideCumulativeChart = true; });
 
     renderFileList('baseline');
     renderFileList('giveup');
@@ -898,7 +909,10 @@
 
   function teacherPageHtml(t, idx){
     const birthLine = t.birth && t.birth.y ? rocDate({year:t.birth.y+1911, month:t.birth.m, day:t.birth.d}) : '（未填寫，僅供金額比較）';
-    const merged = allScenariosIdentical(t);
+
+    // 若使用者在STEP1把三個方案全部勾選，代表想看精簡版：完全不顯示累積總額比較長條圖
+    const hideChart = !!t.hideCumulativeChart;
+    const merged = !hideChart && allScenariosIdentical(t);
 
     let mergedChartBlock = '';
     if(merged){
@@ -915,6 +929,9 @@
         </div>`;
     }
 
+    // 各方案是否顯示自己的累積比較圖：合併時或隱藏時都不畫
+    const showPerScenarioChart = !merged && !hideChart;
+
     return `
       <div class="teacher-page" data-teacher-page="${t.id}">
         <div class="tp-head">
@@ -925,7 +942,7 @@
           <div class="doc-id">出生年月日：${birthLine}<br>製表日期：${new Date().toLocaleDateString('zh-TW')}</div>
         </div>
         <div class="tp-note">說明：本表僅為退休試算系統數值之綜合呈現，資料正確與否取決於試算系統及輸入之正確性。最終決定拋棄優存與否請依個人規劃與客觀數據判斷，本表不負任何建議之責。</div>
-        ${t.scenarios.map(sc=>scenarioBlockHtml(sc,t,true,!merged)).join('')}
+        ${t.scenarios.map(sc=>scenarioBlockHtml(sc,t,true,showPerScenarioChart)).join('')}
         ${mergedChartBlock}
         <div class="tp-footer"><span>教師版</span><span>第 ${idx+1} 份</span></div>
       </div>`;
