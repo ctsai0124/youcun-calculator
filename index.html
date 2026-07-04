@@ -284,7 +284,10 @@
       <h1>優存拋棄試算<span>摺</span></h1>
       <p>上傳「教育人員退休金試算系統」匯出檔 · 自動判斷拋棄優存與否</p>
     </div>
-    <div class="badge-count" id="teacherCount">尚未匯入任何資料</div>
+    <div style="display:flex;flex-direction:column;align-items:flex-end;gap:8px;">
+      <div class="badge-count" id="teacherCount">尚未匯入任何資料</div>
+      <div class="badge-count" id="usageCounter" style="font-size:12px;">使用次數統計中…</div>
+    </div>
   </div>
 
   <div class="card">
@@ -859,6 +862,17 @@
   });
 
   renderAll();
+
+  /* ---------------- usage counter (external free counter API) ---------------- */
+  (function(){
+    const el = document.getElementById('usageCounter');
+    const NAMESPACE = 'pension-giveup-calc-tw';
+    const KEY = 'visits';
+    fetch(`https://api.countapi.xyz/hit/${NAMESPACE}/${KEY}`)
+      .then(r=>r.json())
+      .then(data=>{ el.textContent = `累計使用次數：${Number(data.value).toLocaleString('zh-TW')}`; })
+      .catch(()=>{ el.textContent = '使用次數統計暫時無法載入'; });
+  })();
 })();
 </script>
 </body>
