@@ -888,9 +888,8 @@
   /* ---------------- usage counter (external free counter API) ---------------- */
   (function(){
     const el = document.getElementById('usageCounter');
-    const NAMESPACE = 'pension-giveup-calc-tw';
-    const KEY = 'visits';
-    fetch(`https://api.countapi.xyz/hit/${NAMESPACE}/${KEY}`)
+    const KEY = 'pension-giveup-calc-tw-2026-hits';
+    fetch(`https://countapi.mileshilliard.com/api/v1/hit/${KEY}`)
       .then(r=>r.json())
       .then(data=>{ el.textContent = `累計使用次數：${Number(data.value).toLocaleString('zh-TW')}`; })
       .catch(()=>{ el.textContent = '使用次數統計暫時無法載入'; });
