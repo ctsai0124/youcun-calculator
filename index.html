@@ -199,18 +199,44 @@
   .scenario-title::after{content:"";flex:1;height:1px;background:var(--paper-line);}
 
   .passbook{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--paper-line);border-radius:2px;overflow:hidden;}
-  .pb-col{padding:16px 18px;position:relative;}
+  .pb-col{padding:18px 18px 16px;position:relative;}
   .pb-col.giveup{background:#FBF3F1;border-right:1px dashed var(--paper-line);}
   .pb-col.keep{background:#F0F6F2;}
-  .pb-label{font-size:12px;color:var(--ink-soft);letter-spacing:.04em;margin-bottom:4px;}
-  .pb-amount{font-family:'Space Mono',monospace;font-size:22px;font-weight:700;color:var(--ink);}
-  .pb-sub{font-size:12px;color:var(--ink-soft);margin-top:6px;line-height:1.6;}
+  .pb-label{font-size:12px;color:var(--ink-soft);letter-spacing:.04em;margin-bottom:6px;display:flex;align-items:center;gap:6px;}
+  .pb-label .dot{width:7px;height:7px;border-radius:50%;display:inline-block;}
+  .pb-col.giveup .dot{background:var(--seal);}
+  .pb-col.keep .dot{background:var(--jade);}
+  .pb-amount{font-family:'Space Mono',monospace;font-size:34px;font-weight:700;color:var(--ink);line-height:1.15;letter-spacing:-0.01em;}
+  .pb-amount .unit{font-size:15px;font-weight:600;color:var(--ink-soft);margin-right:4px;}
+  .pb-amount-tag{font-size:12px;color:var(--ink-soft);margin-top:2px;}
+  .pb-sub{font-size:12px;color:var(--ink-soft);margin-top:10px;line-height:1.7;padding-top:10px;border-top:1px dashed var(--paper-line);}
+  .pb-sub b{color:var(--ink);font-family:'Space Mono',monospace;font-weight:700;}
 
   .breakeven-bar{margin-top:14px;padding:0 18px 16px;}
   .bb-track{height:8px;border-radius:4px;background:var(--paper-line);position:relative;overflow:visible;}
   .bb-fill{height:8px;border-radius:4px;background:linear-gradient(90deg,var(--jade),var(--gold));}
   .bb-marker{position:absolute;top:-4px;width:2px;height:16px;background:var(--cover);}
   .bb-caption{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-soft);margin-top:6px;}
+
+  .cmp-chart{margin:4px 18px 16px;padding:16px 18px;background:#fff;border:1px solid var(--paper-line);border-radius:2px;}
+  .cmp-chart .cmp-title{font-size:12.5px;font-weight:600;color:var(--cover);margin-bottom:12px;}
+  .cmp-legend{font-size:11px;color:var(--ink-soft);margin-bottom:14px;display:flex;align-items:center;gap:18px;}
+  .cmp-legend .lg{display:flex;align-items:center;gap:6px;}
+  .cmp-legend .dot{width:9px;height:9px;border-radius:2px;display:inline-block;}
+  .cmp-legend .dot.giveup{background:var(--seal);}
+  .cmp-legend .dot.keep{background:var(--jade);}
+  .cmp-row{margin-bottom:12px;}
+  .cmp-row:last-child{margin-bottom:0;}
+  .cmp-yr{font-size:11.5px;color:var(--ink-soft);font-family:'Space Mono',monospace;margin-bottom:5px;display:flex;align-items:center;gap:8px;}
+  .cmp-yr .lead{font-size:10.5px;padding:1px 7px;border-radius:999px;background:var(--jade-soft);color:var(--jade);font-family:'Noto Sans TC',sans-serif;font-weight:600;}
+  .cmp-yr .lead.giveup{background:var(--seal-soft);color:var(--seal);}
+  .cmp-bar-line{display:flex;align-items:center;gap:10px;margin-bottom:4px;}
+  .cmp-tag{width:52px;flex-shrink:0;font-size:11px;color:var(--ink-soft);}
+  .cmp-track{flex:1;height:16px;background:var(--paper-line);border-radius:2px;overflow:hidden;}
+  .cmp-fill{height:100%;border-radius:2px;transition:width .3s;}
+  .cmp-fill.giveup{background:var(--seal);opacity:.8;}
+  .cmp-fill.keep{background:var(--jade);opacity:.85;}
+  .cmp-val{width:118px;text-align:right;font-family:'Space Mono',monospace;font-size:12px;color:var(--ink);flex-shrink:0;}
 
   .seal-stamp{
     position:absolute;right:26px;top:26px;width:84px;height:84px;
@@ -693,6 +719,43 @@
     return `<div class="seal-stamp">試算<br>參考用</div>`;
   }
 
+  function comparisonChartHtml(sc, computed){
+    if(!computed.hasDiff) return '';
+    const checkpoints = [1,3,5,10,20];
+    const values = checkpoints.map(y=>({
+      y, giveup: computed.B3, keep: sc.E3 + sc.F*12*y
+    }));
+    const maxVal = Math.max(...values.map(v=>Math.max(v.giveup,v.keep)), 1);
+    const rows = values.map(v=>{
+      const gPct = Math.max(2,(v.giveup/maxVal*100));
+      const kPct = Math.max(2,(v.keep/maxVal*100));
+      const leaderIsKeep = v.keep >= v.giveup;
+      return `
+        <div class="cmp-row">
+          <div class="cmp-yr">第 ${v.y} 年　<span class="lead ${leaderIsKeep?'':'giveup'}">${leaderIsKeep?'此時選擇優存領得較多':'此時拋棄優存領得較多'}</span></div>
+          <div class="cmp-bar-line">
+            <div class="cmp-tag">拋棄優存</div>
+            <div class="cmp-track"><div class="cmp-fill giveup" style="width:${gPct}%"></div></div>
+            <div class="cmp-val">NT$ ${fmtMoney(v.giveup)}</div>
+          </div>
+          <div class="cmp-bar-line">
+            <div class="cmp-tag">選擇優存</div>
+            <div class="cmp-track"><div class="cmp-fill keep" style="width:${kPct}%"></div></div>
+            <div class="cmp-val">NT$ ${fmtMoney(v.keep)}</div>
+          </div>
+        </div>`;
+    }).join('');
+    return `
+      <div class="cmp-chart">
+        <div class="cmp-title">累積總額比較（假設持續請領，未計投資報酬）</div>
+        <div class="cmp-legend">
+          <span class="lg"><span class="dot giveup"></span>拋棄優存（一次領取，金額固定）</span>
+          <span class="lg"><span class="dot keep"></span>選擇優存（一次領取＋每月累積利息）</span>
+        </div>
+        ${rows}
+      </div>`;
+  }
+
   function scenarioBlockHtml(sc, t, forTeacher){
     const computed = computeScenario(sc, t.birth);
     const ageLine = computed.ageAtEff
@@ -715,17 +778,20 @@
         <div class="passbook" style="position:relative;">
           ${sealHtml(computed)}
           <div class="pb-col giveup">
-            <div class="pb-label">拋棄優存 · 一次領取</div>
-            <div class="pb-amount">NT$ ${fmtMoney(computed.B3)}</div>
-            <div class="pb-sub">退休當下一次領取，不再每月加發優存利息</div>
+            <div class="pb-label"><span class="dot"></span>拋棄優存 · 現在多領</div>
+            <div class="pb-amount"><span class="unit">NT$</span>${fmtMoney(sc.G)}</div>
+            <div class="pb-amount-tag">退休當下一次領取，之後不再每月加發利息</div>
+            <div class="pb-sub">一次領取總額 <b>NT$ ${fmtMoney(computed.B3)}</b></div>
           </div>
           <div class="pb-col keep">
-            <div class="pb-label">選擇優存 · 一次領取＋每月加發</div>
-            <div class="pb-amount">NT$ ${fmtMoney(sc.E3)}</div>
-            <div class="pb-sub">另每月加發優存利息 NT$ ${fmtMoney(sc.F)}</div>
+            <div class="pb-label"><span class="dot"></span>選擇優存 · 每月多領</div>
+            <div class="pb-amount"><span class="unit">NT$</span>${fmtMoney(sc.F)}<span style="font-size:15px;font-weight:600;color:var(--ink-soft);">/月</span></div>
+            <div class="pb-amount-tag">按月加發優存利息，直到請領完畢</div>
+            <div class="pb-sub">一次領取總額 <b>NT$ ${fmtMoney(sc.E3)}</b></div>
           </div>
         </div>
         ${breakevenBarHtml(computed)}
+        ${comparisonChartHtml(sc, computed)}
         ${computed.hasDiff ? `<div class="pb-sub" style="padding:0 18px 4px;">${ageLine}${ageBeLine ? '，'+ageBeLine : ''}</div>` : ''}
         ${hrExtra}
       </div>`;
