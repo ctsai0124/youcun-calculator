@@ -276,8 +276,13 @@
     .masthead,.tabs,.print-toolbar,.card,.doc-toggle{display:none !important;}
     .view{display:none !important;padding:0;}
     .view.print-active{display:block !important;}
+    /* 人事列印區平時隱藏(inline display:none)，列印人事總表時才顯示 */
+    #view-hr.print-active #hrPrintArea{display:block !important;}
     .teacher-page{box-shadow:none;margin:0;border-radius:0;padding:12px 6px 8px;}
-    .hr-print-page{box-shadow:none;margin:0;border-radius:0;}
+    .hr-print-page{box-shadow:none;margin:0;border-radius:0;padding:4px 6px;}
+    .hr-print-table{font-size:11px;width:100%;}
+    .hr-print-table th{background:var(--cover) !important;color:#fff !important;-webkit-print-color-adjust:exact;print-color-adjust:exact;}
+    .hr-print-table tr{page-break-inside:avoid;break-inside:avoid;}
     .tp-head{padding-bottom:8px;margin-bottom:10px;}
     .tp-note{margin-bottom:10px;padding:7px 12px;font-size:11px;}
     .scenario-block{margin-bottom:12px;}
@@ -293,6 +298,22 @@
     .scenario-title{margin-bottom:8px;}
   }
   .hidden{display:none;}
+
+  .forms-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:12px;margin-top:6px;}
+  .form-link{
+    display:flex;align-items:center;gap:12px;text-decoration:none;
+    border:1px solid var(--paper-line);border-radius:var(--radius);
+    background:#fff;padding:14px 16px;transition:.15s;
+  }
+  .form-link:hover{border-color:var(--jade);background:var(--jade-soft);}
+  .form-icon{font-size:24px;flex-shrink:0;}
+  .form-text{display:flex;flex-direction:column;gap:2px;flex:1;min-width:0;}
+  .form-name{font-weight:600;color:var(--cover);font-size:14px;}
+  .form-desc{color:var(--ink-soft);font-size:11.5px;line-height:1.5;}
+  .form-ext{
+    font-family:'Space Mono',monospace;font-size:11px;color:var(--gold);
+    background:var(--gold-soft);border-radius:4px;padding:3px 8px;flex-shrink:0;
+  }
 
   @media (max-width:560px){
     .card-inner{padding:20px 18px 22px 22px;}
@@ -410,6 +431,39 @@
     <div id="teacherPages"></div>
     <div class="empty-state" id="printEmpty" style="color:var(--ink-soft);">
       <span class="glyph">🧾</span>尚未有任何老師資料可供列印
+    </div>
+  </div>
+
+  <div class="card" id="formsCard">
+    <div class="card-inner">
+      <h2><span class="step">附件</span>相關表單與填寫說明下載</h2>
+      <p class="desc">老師確定拋棄優存後，辦理時需要用到的表單與填寫範例都放在這裡，人事人員可直接下載使用。</p>
+      <div class="forms-grid">
+        <a class="form-link" href="forms/fact-sheet-guide.pdf" target="_blank" rel="noopener">
+          <span class="form-icon">📄</span>
+          <span class="form-text">
+            <span class="form-name">事實表填列說明</span>
+            <span class="form-desc">得辦理優惠存款人員 · 含拋棄／不拋棄修正範例</span>
+          </span>
+          <span class="form-ext">PDF</span>
+        </a>
+        <a class="form-link" href="forms/waiver-affidavit.odt" target="_blank" rel="noopener">
+          <span class="form-icon">📝</span>
+          <span class="form-text">
+            <span class="form-name">拋棄優惠存款權利切結書</span>
+            <span class="form-desc">115.07 版 · 拋棄優存時填寫</span>
+          </span>
+          <span class="form-ext">ODT</span>
+        </a>
+        <a class="form-link" href="forms/account-declaration.odt" target="_blank" rel="noopener">
+          <span class="form-icon">📝</span>
+          <span class="form-text">
+            <span class="form-name">優存開戶聲明書暨服務學校證明書</span>
+            <span class="form-desc">辦理優存開戶時填寫</span>
+          </span>
+          <span class="form-ext">ODT</span>
+        </a>
+      </div>
     </div>
   </div>
 
@@ -1007,7 +1061,55 @@
   function renderAll(){ renderHR(); renderPrintViews(); }
 
   /* ---------------- print actions ---------------- */
+  function buildHrPrintArea(){
+    const area = document.getElementById('hrPrintArea');
+    if(teachers.length===0){ area.innerHTML=''; return; }
+
+    let rows = '';
+    teachers.forEach(t=>{
+      t.scenarios.forEach(sc=>{
+        const c = computeScenario(sc, t.birth);
+        const v = verdictLabel(c);
+        const birth = t.birth && t.birth.y ? `${t.birth.y}/${t.birth.m||''}/${t.birth.d||''}` : '—';
+        rows += `
+          <tr>
+            <td>${t.name}</td>
+            <td>${sc.planLabel}</td>
+            <td style="text-align:center;">${birth}</td>
+            <td style="text-align:right;">${c.hasBoth?fmtMoney(c.E3):'—'}</td>
+            <td style="text-align:right;">${c.hasBoth?fmtMoney(c.G):'—'}</td>
+            <td style="text-align:right;">${c.hasBoth?fmtMoney(c.F):'—'}</td>
+            <td style="text-align:center;">${c.hasDiff?(c.breakevenMonths+' 月'):'—'}</td>
+            <td>${v.text}</td>
+          </tr>`;
+      });
+    });
+
+    area.innerHTML = `
+      <div class="hr-print-page">
+        <div class="tp-head" style="margin-bottom:14px;">
+          <div><h3 style="font-family:'Noto Serif TC',serif;font-size:20px;color:var(--cover);margin:0;">拋棄優存與否試算 · 人事總覽</h3></div>
+          <div class="doc-id" style="font-family:'Space Mono',monospace;font-size:11px;color:var(--ink-soft);text-align:right;">共 ${teachers.length} 位老師<br>製表日期：${new Date().toLocaleDateString('zh-TW')}</div>
+        </div>
+        <table class="ledger hr-print-table">
+          <thead>
+            <tr>
+              <th>老師</th><th>方案</th><th style="text-align:center;">出生年月日</th>
+              <th style="text-align:right;">選擇優存金額</th><th style="text-align:right;">差額</th>
+              <th style="text-align:right;">每月優存息</th><th style="text-align:right;">損益兩平</th><th>建議</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+        <div style="font-size:11px;color:var(--ink-soft);margin-top:14px;line-height:1.7;">
+          說明：本表僅為退休試算系統數值之綜合呈現，資料正確與否取決於試算系統及輸入之正確性。最終決定拋棄優存與否請依個人規劃與客觀數據判斷，本表不負任何建議之責。
+        </div>
+      </div>`;
+  }
+
   document.getElementById('printHrBtn').addEventListener('click', ()=>{
+    if(teachers.length===0){ alert('目前沒有任何資料可列印，請先上傳並解析檔案。'); return; }
+    buildHrPrintArea();
     document.getElementById('view-hr').classList.add('print-active');
     document.getElementById('view-print').classList.remove('print-active');
     window.print();
