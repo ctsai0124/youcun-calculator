@@ -180,8 +180,10 @@
     background:var(--paper);border-radius:var(--radius);
     box-shadow:0 18px 40px -18px rgba(0,0,0,0.55);
     padding:40px 44px 34px;margin-bottom:30px;
-    page-break-after:always;position:relative;
+    page-break-after:always; break-after:page;
+    position:relative;
   }
+  .teacher-page:last-child{page-break-after:auto; break-after:auto;}
   .tp-head{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid var(--cover);padding-bottom:14px;margin-bottom:22px;}
   .tp-head h3{font-family:'Noto Serif TC',serif;font-size:23px;color:var(--cover);margin:0 0 4px;}
   .tp-head .unit{color:var(--ink-soft);font-size:13px;}
@@ -191,14 +193,14 @@
     font-size:12.5px;color:var(--ink-soft);margin-bottom:20px;line-height:1.7;border-radius:0 2px 2px 0;
   }
 
-  .scenario-block{margin-bottom:26px;}
+  .scenario-block{margin-bottom:26px; page-break-inside:avoid; break-inside:avoid;}
   .scenario-title{
     font-family:'Noto Serif TC',serif;font-size:15.5px;color:var(--cover);
     display:flex;align-items:center;gap:10px;margin-bottom:10px;
   }
   .scenario-title::after{content:"";flex:1;height:1px;background:var(--paper-line);}
 
-  .passbook{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--paper-line);border-radius:2px;overflow:hidden;}
+  .passbook{display:grid;grid-template-columns:1fr 1fr;border:1px solid var(--paper-line);border-radius:2px;overflow:hidden; page-break-inside:avoid; break-inside:avoid;}
   .pb-col{padding:18px 18px 16px;position:relative;}
   .pb-col.giveup{background:#FBF3F1;border-right:1px dashed var(--paper-line);}
   .pb-col.keep{background:#F0F6F2;}
@@ -218,7 +220,7 @@
   .bb-marker{position:absolute;top:-4px;width:2px;height:16px;background:var(--cover);}
   .bb-caption{display:flex;justify-content:space-between;font-size:11.5px;color:var(--ink-soft);margin-top:6px;}
 
-  .cmp-chart{margin:4px 18px 16px;padding:16px 18px;background:#fff;border:1px solid var(--paper-line);border-radius:2px;}
+  .cmp-chart{margin:4px 18px 16px;padding:16px 18px;background:#fff;border:1px solid var(--paper-line);border-radius:2px; page-break-inside:avoid; break-inside:avoid;}
   .cmp-chart .cmp-title{font-size:12.5px;font-weight:600;color:var(--cover);margin-bottom:12px;}
   .cmp-legend{font-size:11px;color:var(--ink-soft);margin-bottom:14px;display:flex;align-items:center;gap:18px;}
   .cmp-legend .lg{display:flex;align-items:center;gap:6px;}
@@ -255,6 +257,7 @@
 
   .doc-toggle{display:flex;gap:8px;margin-bottom:18px;}
 
+  @page{ size:A4; margin:12mm; }
   @media print{
     body{background:#fff !important;padding:0;}
     .masthead,.tabs,.print-toolbar,.card,.doc-toggle{display:none !important;}
