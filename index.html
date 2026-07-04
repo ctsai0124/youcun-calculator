@@ -831,7 +831,8 @@
       </div>`;
   }
 
-  function scenarioBlockHtml(sc, t, forTeacher){
+  function scenarioBlockHtml(sc, t, forTeacher, showChart){
+    if(showChart===undefined) showChart = true;
     const computed = computeScenario(sc, t.birth);
 
     if(computed.verdict==='incomplete'){
@@ -878,14 +879,42 @@
           </div>
         </div>
         ${breakevenBarHtml(computed)}
-        ${comparisonChartHtml(computed)}
+        ${showChart ? comparisonChartHtml(computed) : ''}
         ${computed.hasDiff ? `<div class="pb-sub" style="padding:0 18px 4px;">${ageLine}${ageBeLine ? '，'+ageBeLine : ''}</div>` : ''}
         ${hrExtra}
       </div>`;
   }
 
+  // Detect when every completed scenario shares the same core numbers, so the
+  // (longest) 累積總額比較長條圖 can be drawn just once instead of repeated per plan.
+  function allScenariosIdentical(t){
+    const done = t.scenarios
+      .map(sc=>computeScenario(sc, t.birth))
+      .filter(c=> c.verdict!=='incomplete' && c.hasDiff);
+    if(done.length < 2) return false;
+    const first = done[0];
+    return done.every(c=> c.G===first.G && c.F===first.F && c.E3===first.E3 && c.breakevenMonths===first.breakevenMonths);
+  }
+
   function teacherPageHtml(t, idx){
     const birthLine = t.birth && t.birth.y ? rocDate({year:t.birth.y+1911, month:t.birth.m, day:t.birth.d}) : '（未填寫，僅供金額比較）';
+    const merged = allScenariosIdentical(t);
+
+    let mergedChartBlock = '';
+    if(merged){
+      const firstDone = t.scenarios
+        .map(sc=>computeScenario(sc, t.birth))
+        .find(c=> c.verdict!=='incomplete' && c.hasDiff);
+      mergedChartBlock = `
+        <div class="scenario-block">
+          <div class="scenario-title">累積總額比較（三種方案結果相同，合併呈現）</div>
+          <div style="background:var(--jade-soft);border:1px solid var(--paper-line);border-radius:var(--radius);padding:10px 16px;color:var(--ink-soft);font-size:12.5px;margin-bottom:10px;">
+            本案「一次退休金／兼領月退金／月退休金」三種方案，其拋棄優存的差額、每月優存息與損益兩平時間完全相同，故以下比較圖表適用於全部方案，僅呈現一次。
+          </div>
+          ${comparisonChartHtml(firstDone)}
+        </div>`;
+    }
+
     return `
       <div class="teacher-page" data-teacher-page="${t.id}">
         <div class="tp-head">
@@ -896,7 +925,8 @@
           <div class="doc-id">出生年月日：${birthLine}<br>製表日期：${new Date().toLocaleDateString('zh-TW')}</div>
         </div>
         <div class="tp-note">說明：本表僅為退休試算系統數值之綜合呈現，資料正確與否取決於試算系統及輸入之正確性。最終決定拋棄優存與否請依個人規劃與客觀數據判斷，本表不負任何建議之責。</div>
-        ${t.scenarios.map(sc=>scenarioBlockHtml(sc,t,true)).join('')}
+        ${t.scenarios.map(sc=>scenarioBlockHtml(sc,t,true,!merged)).join('')}
+        ${mergedChartBlock}
         <div class="tp-footer"><span>教師版</span><span>第 ${idx+1} 份</span></div>
       </div>`;
   }
