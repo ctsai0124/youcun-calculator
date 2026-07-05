@@ -340,6 +340,32 @@ table.ledger{width:100%;border-collapse:collapse;min-width:900px;}
 
 .age-line{font-size:.75rem;color:var(--muted);margin-top:.6875rem;line-height:1.6}
 
+/* raw-number detail */
+.detail{
+  margin-top:.875rem;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;
+}
+.detail-head{
+  padding:.625rem 1rem;border-bottom:1px solid var(--line);background:var(--surface);
+  display:flex;align-items:center;gap:.625rem;flex-wrap:wrap;
+}
+.detail-head h4{font-size:.8125rem;font-weight:600}
+.detail-head .sub{font-size:.71875rem;color:var(--muted)}
+.detail-table{width:100%;border-collapse:collapse;font-size:.78125rem}
+.detail-table th,.detail-table td{padding:.4375rem .875rem;text-align:right;font-variant-numeric:tabular-nums}
+.detail-table thead th{
+  background:var(--bg);color:var(--muted);font-weight:500;font-size:.71875rem;
+  border-bottom:1px solid var(--line);
+}
+.detail-table th.row-label,.detail-table td.row-label{
+  text-align:left;color:var(--ink);font-weight:400;white-space:nowrap;font-variant-numeric:normal;
+}
+.detail-table tbody td{border-bottom:1px solid var(--line);font-family:var(--font-mono)}
+.detail-table tbody tr:last-child td{border-bottom:0}
+.detail-table tr.total-row td{background:var(--primary-soft);font-weight:600;color:var(--primary-ink)}
+.detail-table tr.total-row td.row-label{color:var(--primary-ink);font-weight:600}
+.detail-table tr.sub-row td{color:var(--muted);font-size:.75rem}
+.detail-foot{padding:.5625rem 1rem;font-size:.6875rem;color:var(--muted);line-height:1.6;background:var(--surface)}
+
 /* cumulative chart */
 .cum{
   margin-top:.875rem;border:1px solid var(--line);border-radius:var(--radius);overflow:hidden;
@@ -685,7 +711,9 @@ table.ledger{width:100%;border-collapse:collapse;min-width:900px;}
     const E = toNumber(firstMatch(rows, [n=> n.includes('每月公保養老給付') && n.includes('優存利息')]));
     const F = toNumber(firstMatch(rows, [n=> n.includes('舊制年資') && n.includes('優存利息') && n.includes('F')]));
     const G = toNumber(firstMatch(rows, [n=> n.includes('舊制') && n.includes('退休金') && n.includes('G') && !n.includes('每月')]));
-    return { name, unit, J, E, F, G };
+    // P = 得辦理優惠存款之公保養老給付金額（放進18%優存帳戶的公保本金；拋棄後為0）
+    const P = toNumber(firstMatch(rows, [n=> n==='得辦理優惠存款之公保養老給付金額']));
+    return { name, unit, J, E, F, G, P };
   }
 
   function findOrCreateTeacher(name, unit){
@@ -712,6 +740,7 @@ table.ledger{width:100%;border-collapse:collapse;min-width:900px;}
   function computeScenario(sc, birth){
     const hasBoth = !!sc.baseline && !!sc.giveup;
     let E3=0, G=0, F=0, B3=0;
+    let detail = null;
     if(hasBoth){
       const lumpKeep   = sc.baseline.J + (sc.baseline.F===0 ? sc.baseline.G : 0);
       const lumpGiveup = sc.giveup.J   + (sc.giveup.F===0   ? sc.giveup.G   : 0);
@@ -721,6 +750,27 @@ table.ledger{width:100%;border-collapse:collapse;min-width:900px;}
       G  = lumpGiveup - lumpKeep;
       F  = monthlyKeep - monthlyGiveup;
       B3 = lumpGiveup;
+
+      // 原始數字明細：兩種「總額」定義
+      //  可動用金額 = J +（若舊制優存本金F=0代表已領出，則加G）  → 等同 lumpKeep/lumpGiveup
+      //  公保優存本金 P = 得辦理優惠存款之公保養老給付金額
+      //  舊制一次退休金優存本金 = 若F>0(仍在優存)則為G，否則0
+      const keepMovable = lumpKeep, giveupMovable = lumpGiveup;
+      const keepGongbaoPrincipal = sc.baseline.P || 0;
+      const giveupGongbaoPrincipal = sc.giveup.P || 0;
+      const keepOldPrincipal = sc.baseline.F>0 ? sc.baseline.G : 0;
+      const giveupOldPrincipal = sc.giveup.F>0 ? sc.giveup.G : 0;
+      detail = {
+        keepMovable, giveupMovable,
+        keepGongbaoPrincipal, giveupGongbaoPrincipal,
+        keepOldPrincipal, giveupOldPrincipal,
+        // 總額A：僅計公保養老給付優存本金
+        keepTotalA: keepMovable + keepGongbaoPrincipal,
+        giveupTotalA: giveupMovable + giveupGongbaoPrincipal,
+        // 總額B：計入所有優存本金（含未拋棄的舊制一次退休金優存）
+        keepTotalB: keepMovable + keepGongbaoPrincipal + keepOldPrincipal,
+        giveupTotalB: giveupMovable + giveupGongbaoPrincipal + giveupOldPrincipal
+      };
     }
 
     let breakevenMonths = 0;
@@ -749,7 +799,7 @@ table.ledger{width:100%;border-collapse:collapse;min-width:900px;}
 
     return Object.assign({}, sc, {
       E3, G, F, B3, breakevenMonths, beYears, beMonths, ageAtEff, ageAtBreakeven,
-      hasBoth, hasDiff: hasBoth && G>0 && F>0, verdict
+      hasBoth, hasDiff: hasBoth && G>0 && F>0, verdict, detail
     });
   }
 
@@ -1007,6 +1057,29 @@ table.ledger{width:100%;border-collapse:collapse;min-width:900px;}
       </div>`;
   }
 
+  function detailHtml(c){
+    const d = c.detail;
+    if(!d) return '';
+    return `
+      <div class="detail">
+        <div class="detail-head"><h4>原始數字明細</h4><span class="sub">兩種「總額」定義並列，供人事／老師依需求比較</span></div>
+        <table class="detail-table">
+          <thead><tr><th class="row-label">項目</th><th>不拋棄（基準版）</th><th>拋棄版</th></tr></thead>
+          <tbody>
+            <tr><td class="row-label">可自由運用金額<span style="color:var(--faint)">（現在能動用的現金）</span></td><td>${fmtMoney(d.keepMovable)}</td><td>${fmtMoney(d.giveupMovable)}</td></tr>
+            <tr class="sub-row"><td class="row-label">＋ 公保養老給付優存本金</td><td>${fmtMoney(d.keepGongbaoPrincipal)}</td><td>${fmtMoney(d.giveupGongbaoPrincipal)}</td></tr>
+            <tr class="total-row"><td class="row-label">總額A ＝ 可運用 ＋ 公保優存本金</td><td>${fmtMoney(d.keepTotalA)}</td><td>${fmtMoney(d.giveupTotalA)}</td></tr>
+            <tr class="sub-row"><td class="row-label">＋ 舊制一次退休金優存本金</td><td>${fmtMoney(d.keepOldPrincipal)}</td><td>${fmtMoney(d.giveupOldPrincipal)}</td></tr>
+            <tr class="total-row"><td class="row-label">總額B ＝ 含全部優存本金</td><td>${fmtMoney(d.keepTotalB)}</td><td>${fmtMoney(d.giveupTotalB)}</td></tr>
+          </tbody>
+        </table>
+        <div class="detail-foot">
+          說明：「可自由運用金額」是退休當下實際能動用的現金（本工具主要比較基準）。「總額A」把仍放在18%帳戶的公保養老給付優存本金也算進來；「總額B」再加計未拋棄的舊制一次退休金優存本金。三種基準的差額分別為
+          可運用 ${fmtMoney(d.giveupMovable-d.keepMovable)}、總額A ${fmtMoney(d.giveupTotalA-d.keepTotalA)}、總額B ${fmtMoney(d.giveupTotalB-d.keepTotalB)}。
+        </div>
+      </div>`;
+  }
+
   function verdictFlag(c){
     const v = verdictLabel(c);
     let label = '';
@@ -1035,6 +1108,7 @@ table.ledger{width:100%;border-collapse:collapse;min-width:900px;}
       <div class="scenario">
         <div class="scenario-title">${esc(sc.planLabel)} ${verdictFlag(c)}</div>
         ${compareCardsHtml(c)}
+        ${detailHtml(c)}
         ${breakevenHtml(c)}
         ${showChart ? cumChartHtml(c) : ''}
         ${ageLineHtml(c)}
@@ -1050,13 +1124,17 @@ table.ledger{width:100%;border-collapse:collapse;min-width:900px;}
 
   function mergedScenarioHtml(t, showChart){
     const doneScenarios = t.scenarios.filter(sc=>{ const c=computeScenario(sc,t.birth); return c.verdict!=='incomplete' && c.hasDiff; });
-    const c = computeScenario(doneScenarios[0], t.birth);
+    const computedList = doneScenarios.map(sc=>computeScenario(sc,t.birth));
+    const c = computedList[0];
     const planNames = doneScenarios.map(sc=>sc.planLabel).join('／');
+    // 舊制一次退休金優存本金會因方案而不同，總額B是否一致需檢查
+    const totalBVaries = computedList.some(x=> x.detail && c.detail && x.detail.keepTotalB!==c.detail.keepTotalB);
     return `
       <div class="scenario">
         <div class="scenario-title">${esc(planNames)} ${verdictFlag(c)}</div>
-        <div class="merge-note">上述 ${doneScenarios.length} 種退休方案，其拋棄優存的差額、每月優存息與損益兩平時間完全相同，故合併呈現一次。</div>
+        <div class="merge-note">上述 ${doneScenarios.length} 種退休方案，其拋棄優存的差額、每月優存息與損益兩平時間完全相同，故合併呈現一次。${totalBVaries?'（註：下方「總額B」因各方案的舊制一次退休金優存本金不同而略有差異，此處以「'+esc(c.planLabel)+'」為例。）':''}</div>
         ${compareCardsHtml(c)}
+        ${detailHtml(c)}
         ${breakevenHtml(c)}
         ${showChart ? cumChartHtml(c) : ''}
         ${ageLineHtml(c)}
