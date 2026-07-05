@@ -403,6 +403,15 @@ table.ledger{width:100%;border-collapse:collapse;min-width:900px;}
   background:var(--warn-soft);border:1px solid var(--line);border-radius:var(--radius-sm);
   padding:.75rem .875rem;
 }
+.under36-box{
+  display:flex;gap:.75rem;align-items:flex-start;
+  background:var(--info-soft);border:1px solid var(--line);border-radius:var(--radius);
+  padding:.875rem 1rem;
+}
+.under36-box .u36-icon{color:var(--info-ink);flex-shrink:0;margin-top:.0625rem}
+.under36-box .u36-icon svg{width:22px;height:22px;stroke:currentColor;stroke-width:1.6;fill:none;stroke-linecap:round;stroke-linejoin:round}
+.under36-box .u36-text{font-size:.8125rem;color:var(--muted);line-height:1.7}
+.under36-box .u36-text b{display:block;color:var(--info-ink);font-weight:600;margin-bottom:.25rem;font-size:.875rem}
 
 .report-foot{
   margin-top:1.5rem;padding-top:.875rem;border-top:1px solid var(--line);
@@ -713,7 +722,9 @@ table.ledger{width:100%;border-collapse:collapse;min-width:900px;}
     const G = toNumber(firstMatch(rows, [n=> n.includes('舊制') && n.includes('退休金') && n.includes('G') && !n.includes('每月')]));
     // P = 得辦理優惠存款之公保養老給付金額（放進18%優存帳戶的公保本金；拋棄後為0）
     const P = toNumber(firstMatch(rows, [n=> n==='得辦理優惠存款之公保養老給付金額']));
-    return { name, unit, J, E, F, G, P };
+    // M = 公保養老給付月數（≤36個月者依公文無需選擇拋棄與否）
+    const M = toNumber(firstMatch(rows, [n=> n==='公保養老給付月數']));
+    return { name, unit, J, E, F, G, P, M };
   }
 
   function findOrCreateTeacher(name, unit){
@@ -792,14 +803,23 @@ table.ledger{width:100%;border-collapse:collapse;min-width:900px;}
     }
 
     let verdict = 'none';
+    // 公保養老給付月數判斷是否需要選擇拋棄：
+    // 依上級公文，「不拋棄」最高以36個月為限、「拋棄」可支領超過36個月。
+    // 因此不拋棄版的月數恆被36截斷，真正的權益月數要看「拋棄版」——
+    // 若拋棄版仍 ≤ 36 個月，代表拋棄也拿不到更多，無須選擇。
+    const gongbaoMonths = sc.giveup ? (sc.giveup.M || 0) : 0;
+    const under36 = hasBoth && gongbaoMonths > 0 && gongbaoMonths <= 36;
+
     if(!hasBoth){ verdict = 'incomplete'; }
+    else if(under36){ verdict = 'under36'; }
     else if(G <= 0){ verdict = 'none'; }
     else if(F <= 0){ verdict = 'giveup'; }
     else { verdict = breakevenMonths > 12*30 ? 'giveup' : 'compare'; }
 
     return Object.assign({}, sc, {
       E3, G, F, B3, breakevenMonths, beYears, beMonths, ageAtEff, ageAtBreakeven,
-      hasBoth, hasDiff: hasBoth && G>0 && F>0, verdict, detail
+      hasBoth, hasDiff: hasBoth && G>0 && F>0 && !under36, verdict, detail,
+      gongbaoMonths, under36
     });
   }
 
@@ -929,11 +949,15 @@ table.ledger{width:100%;border-collapse:collapse;min-width:900px;}
       const missing = !sc.baseline ? '基準版' : '拋棄版';
       return {cls:'none', text:`尚缺「${missing}」試算表，無法比較`};
     }
+    if(sc.verdict==='under36'){
+      return {cls:'none', text:`公保養老給付${fmtMonths(sc.gongbaoMonths)}個月未達36個月，無須選擇拋棄`};
+    }
     if(!sc.hasDiff && sc.verdict!=='giveup') return {cls:'none', text:'差額為0，無拋棄優存疑慮'};
     if(sc.verdict==='giveup' && sc.F<=0 && sc.G>0) return {cls:'giveup', text:'拋棄優存無每月損失，建議拋棄'};
     if(sc.breakevenMonths<=0) return {cls:'keep', text:'建議選擇優存'};
     return {cls:'compare', text:`約 ${sc.beYears}年${sc.beMonths}月後優存才划算`};
   }
+  function fmtMonths(m){ return Number.isInteger(m) ? String(m) : m.toFixed(1); }
 
   function renderHR(){
     let rowCount = 0;
@@ -1104,6 +1128,19 @@ table.ledger{width:100%;border-collapse:collapse;min-width:900px;}
       const missing = !sc.baseline ? '① 不拋棄優存（基準版）' : '② 拋棄優存版';
       return `<div class="scenario"><div class="scenario-title">${esc(sc.planLabel)}</div><div class="incomplete-box">尚缺「${missing}」的試算表，補齊後這個方案即可自動算出差異。</div></div>`;
     }
+    if(c.verdict==='under36'){
+      return `
+        <div class="scenario">
+          <div class="scenario-title">${esc(sc.planLabel)} <span class="verdict-flag none">無須選擇拋棄</span></div>
+          <div class="under36-box">
+            <div class="u36-icon"><svg viewBox="0 0 24 24"><path d="M12 8v5M12 16.5v.5"/><circle cx="12" cy="12" r="9"/></svg></div>
+            <div class="u36-text">
+              <b>${esc(t.name)}老師公保養老給付 ${fmtMonths(c.gongbaoMonths)} 個月，未達 36 個月，無須選擇拋棄與否。</b>
+              依上級公文，公保養老給付未達或等於36個月者，逕依規定辦理（免填拋棄／不拋棄切結，備妥事實表、退休金領取方案試算表、優惠儲蓄存款綜合服務存摺影本即可）。
+            </div>
+          </div>
+        </div>`;
+    }
     return `
       <div class="scenario">
         <div class="scenario-title">${esc(sc.planLabel)} ${verdictFlag(c)}</div>
@@ -1144,7 +1181,8 @@ table.ledger{width:100%;border-collapse:collapse;min-width:900px;}
   function reportHtml(t, idx){
     const birthLine = t.birth && t.birth.y ? rocDate({year:t.birth.y+1911, month:t.birth.m, day:t.birth.d}) : '（未填寫，僅供金額比較）';
     const hideChart = !!t.hideCumulativeChart;
-    const identical = allScenariosIdentical(t);
+    const anyUnder36 = t.scenarios.some(sc=>computeScenario(sc,t.birth).verdict==='under36');
+    const identical = !anyUnder36 && allScenariosIdentical(t);
 
     let body;
     if(identical){
