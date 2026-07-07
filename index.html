@@ -724,7 +724,41 @@ table.ledger{width:100%;border-collapse:collapse;min-width:900px;}
     const P = toNumber(firstMatch(rows, [n=> n==='得辦理優惠存款之公保養老給付金額']));
     // M = 公保養老給付月數（≤36個月者依公文無需選擇拋棄與否）
     const M = toNumber(firstMatch(rows, [n=> n==='公保養老給付月數']));
-    return { name, unit, J, E, F, G, P, M };
+    // actualMonthly = 「調整後實際可領取每月所得」表中的每月優存利息實際值。
+    // 這才是天花板(所得替代率上限)調整後的真實金額——若退休所得超過上限，
+    // 優存利息會被砍，此欄會低於理論的 18% 全額(E+F)。務必用這個而非 E+F。
+    const actualMonthly = extractActualMonthlyInterest(rows);
+    return { name, unit, J, E, F, G, P, M, actualMonthly };
+  }
+
+  // 從「調整後實際可領取每月所得」明細表，加總所有「每月利息」欄的實際值。
+  // 三種分頁(一次退休金/兼領/月退休金)的表頭結構不同，故以「調整後實際可領取每月所得」
+  // 為錨點，再動態找出子表頭中所有含「每月利息」的欄位加總，才能通用。
+  // 這個值已含天花板(所得替代率上限)調整——若優存利息被砍，此處為砍後的真實金額。
+  function extractActualMonthlyInterest(rows){
+    let anchorIdx = -1;
+    for(let r=0;r<rows.length;r++){
+      for(const cell of rows[r]){
+        if(typeof cell==='string' && norm(cell).includes('調整後實際可領取每月所得')){ anchorIdx=r; break; }
+      }
+      if(anchorIdx>=0) break;
+    }
+    if(anchorIdx<0) return null;
+    let subHeaderIdx = -1;
+    for(let r=anchorIdx+1; r<Math.min(anchorIdx+4, rows.length); r++){
+      if(rows[r] && rows[r].some(c=> typeof c==='string' && norm(c).includes('每月利息'))){ subHeaderIdx=r; break; }
+    }
+    if(subHeaderIdx<0) return null;
+    const subHeader = rows[subHeaderIdx];
+    let interestCols = [];
+    for(let c=0;c<subHeader.length;c++){
+      if(typeof subHeader[c]==='string' && norm(subHeader[c]).includes('每月利息')){ interestCols.push(c); }
+    }
+    if(interestCols.length===0) return null;
+    const dataRow = rows[subHeaderIdx+1] || [];
+    let total = 0;
+    interestCols.forEach(c=>{ total += toNumber(dataRow[c]); });
+    return total;
   }
 
   function findOrCreateTeacher(name, unit){
@@ -755,8 +789,10 @@ table.ledger{width:100%;border-collapse:collapse;min-width:900px;}
     if(hasBoth){
       const lumpKeep   = sc.baseline.J + (sc.baseline.F===0 ? sc.baseline.G : 0);
       const lumpGiveup = sc.giveup.J   + (sc.giveup.F===0   ? sc.giveup.G   : 0);
-      const monthlyKeep   = sc.baseline.E + sc.baseline.F;
-      const monthlyGiveup = sc.giveup.E   + sc.giveup.F;
+      // 每月優存息：優先用「調整後實際可領取」的真實值（已含天花板調整）；
+      // 若試算表抓不到該表(actualMonthly為null)則退回理論 E+F。
+      const monthlyKeep   = (sc.baseline.actualMonthly!=null) ? sc.baseline.actualMonthly : (sc.baseline.E + sc.baseline.F);
+      const monthlyGiveup = (sc.giveup.actualMonthly!=null)   ? sc.giveup.actualMonthly   : (sc.giveup.E + sc.giveup.F);
       E3 = lumpKeep;
       G  = lumpGiveup - lumpKeep;
       F  = monthlyKeep - monthlyGiveup;
